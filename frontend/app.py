@@ -105,6 +105,7 @@ suspicious insider threats in real-time.
 - 📊 **Advanced Analytics**: Comprehensive data access patterns analysis
 - 🚨 **Smart Alerts**: Severity-based alert system with recommended actions
 - 🔎 **Investigation Tools**: Deep dive into user activities and behavioral patterns
+- 🎯 **Threat Simulation (ATO)**: Interactive K-Means peer-group clustering demo
 - 🤖 **AI Summary**: Automated insights and threat intelligence
 
 ### How it Works
