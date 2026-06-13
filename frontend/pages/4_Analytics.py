@@ -2,26 +2,28 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import json
+import os
+import sys
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from data_service import get_events_dataframe
 
 st.set_page_config(page_title="Analytics", page_icon="📈", layout="wide")
 
 st.title("📈 Security Analytics & Insights")
 
-# --- 1. Load Data via Session State ---
-alerts = st.session_state.get('alerts', [])
+try:
+    df = get_events_dataframe()
+except FileNotFoundError:
+    st.error("❌ Data files not found. Please run generate_ps4_data.py first.")
+    st.stop()
+except Exception as e:
+    st.error(f"❌ Error loading backend events: {str(e)}")
+    st.stop()
 
-# Resilience Check
-if not alerts:
-    try:
-        with open("../outputs/alerts.json", "r") as f:
-            alerts = json.load(f)
-            st.session_state['alerts'] = alerts
-    except FileNotFoundError:
-        st.info("No alerts available. Please generate alerts from the backend.")
-        st.stop()
-
-df = pd.DataFrame(alerts)
+if df.empty:
+    st.info("No backend events available for analytics.")
+    st.stop()
 
 # --- 2. ROW 1: GAUGE & HISTOGRAM ---
 col_gauge, col_hist = st.columns(2)

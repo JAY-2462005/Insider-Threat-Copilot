@@ -4,6 +4,7 @@ from sklearn.ensemble import IsolationForest
 from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
 import json
 import os
+from pathlib import Path
 
 def load_and_merge_data(logs_path, profiles_path):
     """Loads CSVs and merges them on user_id safely."""
@@ -204,8 +205,9 @@ def get_alerts_for_ui(logs_path, profiles_path, threshold=70):
     return alerts_list
 
 if __name__ == "__main__":
-    logs = "../data/data_access_logs.csv"
-    profs = "../data/user_profiles.csv"
+    project_root = Path(__file__).resolve().parents[1]
+    logs = project_root / "data" / "data_access_logs.csv"
+    profs = project_root / "data" / "user_profiles.csv"
     
     if os.path.exists(logs) and os.path.exists(profs):
         # 1. First, process the data to get the dataframe

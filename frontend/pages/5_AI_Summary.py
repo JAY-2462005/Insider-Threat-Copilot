@@ -1,168 +1,175 @@
-import pandas as pd
-import numpy as np
-import random
-from datetime import datetime, timedelta
+import streamlit as st
+import sys
 import os
 
-# Set seed for reproducible hackathon demos
-random.seed(42)
-np.random.seed(42)
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from data_service import get_alerts, get_threshold
 
-def generate_profiles(num_users=100):
-    departments = ['Finance', 'IT', 'Engineering', 'HR', 'Marketing', 'Sales']
-    tiers = ['junior', 'standard', 'senior', 'admin', 'executive', 'contractor']
+try:
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend')))
+    from llm_summary import (
+        fallback_executive_summary,
+        generate_executive_summary,
+        generate_investigation_narrative,
+        is_gemini_configured,
+    )
+    GEMINI_AVAILABLE = True
+except Exception:
+    GEMINI_AVAILABLE = False
+
+st.set_page_config(page_title="AI Summary", page_icon="🤖", layout="wide")
+
+st.title("🤖 AI-Powered Threat Intelligence")
+
+try:
+    alerts = get_alerts(get_threshold())
+except FileNotFoundError:
+    st.error("❌ Data files not found. Please run generate_ps4_data.py first.")
+    st.stop()
+except Exception as e:
+    st.error(f"❌ Error loading backend alerts: {str(e)}")
+    st.stop()
+
+# Executive Summary
+st.subheader("📋 Executive Summary")
+
+if not alerts:
+    st.success("✅ No critical threats detected. Security posture is healthy.")
+elif GEMINI_AVAILABLE and is_gemini_configured():
+    with st.spinner("🔄 Generating executive summary..."):
+        exec_summary = generate_executive_summary(alerts)
+        st.success(exec_summary)
+elif GEMINI_AVAILABLE:
+    st.info(fallback_executive_summary(alerts))
+else:
+    st.info("Executive summary requires Gemini API. Using fallback statistics.")
+
+# Statistics
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.metric("Total Threats", len(alerts))
+
+with col2:
+    critical = len([a for a in alerts if a['severity'] == 'CRITICAL'])
+    st.metric("CRITICAL", critical)
+
+with col3:
+    high = len([a for a in alerts if a['severity'] == 'HIGH'])
+    st.metric("HIGH Risk", high)
+
+st.markdown("---")
+
+# Common Threat Patterns
+st.subheader("🔍 Common Threat Patterns")
+
+threat_patterns = {}
+for alert in alerts:
+    for reason in alert.get('justification', []):
+        pattern = reason.split('(')[0].strip()
+        threat_patterns[pattern] = threat_patterns.get(pattern, 0) + 1
+
+sorted_patterns = sorted(threat_patterns.items(), key=lambda x: x[1], reverse=True)
+
+for pattern, count in sorted_patterns[:10]:
+    percentage = (count / len(alerts)) * 100
+    st.markdown(f"**{pattern}** ({count} occurrences, {percentage:.1f}%)")
+    st.progress(min(percentage / 100, 1.0))
+
+if not sorted_patterns:
+    st.info("No threat patterns above the selected threshold.")
+
+st.markdown("---")
+
+# Risk Hotspots
+st.subheader("🔥 Risk Hotspots")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    st.markdown("**By Department:**")
+    dept_alerts = {}
+    for alert in alerts:
+        dept = alert.get('department', 'Unknown')
+        dept_alerts[dept] = dept_alerts.get(dept, 0) + 1
     
-    profiles = []
-    for i in range(1, num_users + 1):
-        dept = random.choice(departments)
-        tier = random.choices(
-            tiers,
-            weights=[25, 40, 15, 8, 5, 7],
-            k=1
-        )[0]
+    for dept, count in sorted(dept_alerts.items(), key=lambda x: x[1], reverse=True):
+        st.markdown(f"- {dept}: {count} threats")
+
+with col2:
+    st.markdown("**By Data Asset:**")
+    asset_alerts = {}
+    for alert in alerts:
+        asset = alert.get('data_asset', 'Unknown')
+        asset_alerts[asset] = asset_alerts.get(asset, 0) + 1
+    
+    for asset, count in sorted(asset_alerts.items(), key=lambda x: x[1], reverse=True)[:8]:
+        st.markdown(f"- {asset}: {count} access attempts")
+
+st.markdown("---")
+
+# Recommendations
+st.subheader("💡 AI-Generated Recommendations")
+
+if GEMINI_AVAILABLE and is_gemini_configured():
+    st.info("✅ Recommendations are powered by Gemini LLM analysis (see Executive Summary above)")
+else:
+    st.info("Manual recommendation engine (Gemini not available)")
+
+# Manual fallback recommendations
+recommendations = []
+
+if len([a for a in alerts if a['severity'] == 'CRITICAL']) > 0:
+    recommendations.append("🚨 **IMMEDIATE ACTION**: Critical threats detected. Escalate to SOC immediately.")
+
+off_hours_count = len([a for a in alerts if 'Off-hours Access' in str(a.get('justification', []))])
+if off_hours_count > 0:
+    recommendations.append(f"🌙 {off_hours_count} threats involve off-hours access. Enforce stricter policies.")
+
+bulk_export_count = len([a for a in alerts if 'Bulk Export' in str(a.get('justification', []))])
+if bulk_export_count > 0:
+    recommendations.append(f"📦 {bulk_export_count} threats involve bulk exports. Review data exfiltration controls.")
+
+if not recommendations:
+    recommendations.append("✅ Continue monitoring. Current threat levels are manageable.")
+
+for rec in recommendations:
+    st.warning(rec)
+
+st.markdown("---")
+
+# Detailed Threat Analysis
+st.subheader("📊 Detailed Threat Narratives")
+
+with st.expander("View All Alerts with AI Analysis", expanded=False):
+    for idx, alert in enumerate(alerts[:5]):  # Show first 5
+        st.markdown(f"### Alert {idx + 1}: {alert['username']} - {alert['severity']}")
         
-        # Base attributes on tier
-        if tier == 'junior':
-            title = 'Intern'
-            hours = '9-17'
-            avg_rows = random.randint(10, 100)
-            assets = 'Public_Data'
-        elif tier == 'admin':
-            title = 'System Admin'
-            hours = '0-24'
-            avg_rows = random.randint(1000, 5000)
-            assets = 'ALL'
-        elif tier == 'executive':
-            title = f'VP of {dept}'
-            hours = '8-20'
-            avg_rows = random.randint(100, 500)
-            assets = 'ALL'
+        if GEMINI_AVAILABLE and is_gemini_configured():
+            if st.button("Generate Narrative", key=f"narrative_{alert['access_id']}"):
+                with st.spinner(f"Analyzing alert {idx + 1}..."):
+                    narrative = generate_investigation_narrative(alert)
+                    st.success(narrative)
+            else:
+                st.info(f"{alert['username']}: Risk Score {alert['risk_score']:.1f}")
         else:
-            title = f'{dept} Specialist'
-            hours = '8-18'
-            avg_rows = random.randint(50, 1000)
-            assets = f'{dept}_DB|Shared_Drive'
-
-        profiles.append({
-            'user_id': f'USR-{i:04d}',
-            'username': f'user.{i:04d}',
-            'department': dept,
-            'job_title': title,
-            'tenure_months': random.randint(1, 120),
-            'approved_data_assets': assets,
-            'avg_queries_per_day': round(random.uniform(2.0, 30.0), 1),
-            'typical_access_hours': hours,
-            'avg_rowcount_per_query': avg_rows,
-            'high_risk_flag': random.random() < 0.05, # 5% of users are flight risks
-            'equipment': 'company_laptop' if tier != 'contractor' else 'contractor_machine',
-            'access_tier': tier
-        })
+            st.info(f"{alert['username']}: Risk Score {alert['risk_score']:.1f}")
+            for reason in alert.get('justification', []):
+                st.markdown(f"- {reason}")
         
-    return pd.DataFrame(profiles)
+        st.markdown("---")
 
-def generate_logs(profiles_df, num_events=1500, anomaly_rate=0.10):
-    start_date = datetime(2026, 4, 1)
-    end_date = datetime(2026, 4, 30)
-    
-    assets = ['GL_Ledger', 'Customer_DB', 'Source_Code', 'Payroll', 'Marketing_Assets', 'PII_Database']
-    destinations = ['local_workstation', 'internal_share', 'cloud_storage', 'usb_drive', 'personal_usb', 'external_email']
-    sensitivities = ['low', 'medium', 'high', 'restricted']
-    
-    logs = []
-    users = profiles_df.to_dict('records')
-    
-    num_anomalies = int(num_events * anomaly_rate)
-    anomaly_indices = set(random.sample(range(num_events), num_anomalies))
-    
-    for i in range(num_events):
-        user = random.choice(users)
-        is_anomaly = i in anomaly_indices
-        
-        # Baseline normal generation
-        log_time = start_date + timedelta(
-            days=random.randint(0, 29),
-            hours=random.randint(9, 16), # Normal hours
-            minutes=random.randint(0, 59)
-        )
-        
-        rowcount = int(user['avg_rowcount_per_query'] * random.uniform(0.5, 1.5))
-        destination = random.choices(
-            destinations[:3],
-            weights=[60, 30, 10],
-            k=1
-        )[0]
-        sensitivity = random.choices(sensitivities[:2], weights=[80, 20], k=1)[0]
-        marker = None
-        
-        if is_anomaly:
-            # Weighted, realistic scenario distribution
-            scenario = random.choices([1, 2, 3, 4], weights=[10, 20, 30, 40], k=1)[0]
+# Next Steps
+st.subheader("📍 Recommended Next Steps")
 
-            if scenario == 1: # Midnight Bulk USB Export (Critical)
-                log_time = log_time.replace(
-                    hour=random.choice([0, 1, 2, 3, 4])
-                )
-                rowcount = random.randint(50000, 250000)
-                destination = 'personal_usb'
-                sensitivity = 'restricted'
-                marker = 'NIGHT_BULK_EXPORT_CRITICAL'
-                
-            elif scenario == 2: # Intern accessing Restricted PII (High)
-                interns = [u for u in users if u['access_tier'] == 'junior']
-                if interns: user = random.choice(interns)
-                sensitivity = 'restricted'
-                destination = 'external_email'
-                marker = 'INTERN_RESTRICTED_ACCESS'
-                
-            elif scenario == 3: # Off-hours Massive Export (High)
-                log_time = log_time.replace(hour=random.choice(range(0, 6)))
-                rowcount = random.randint(20000, 80000)
-                destination = 'cloud_storage'
-                marker = 'OFF_HOURS_BULK_EXPORT'
-                
-            elif scenario == 4: # High Risk Employee Exfiltration
-                high_risks = [u for u in users if u['high_risk_flag']]
-                if high_risks: user = random.choice(high_risks)
-                rowcount = random.randint(10000, 50000)
-                destination = 'external_email'
-                marker = 'FLIGHT_RISK_EXFILTRATION'
+st.markdown("""
+1. **Prioritize Investigation**: Focus on CRITICAL and HIGH severity alerts
+2. **Interview Users**: Verify business justification for flagged activities
+3. **Access Audit**: Review recent permission grants
+4. **Policy Enforcement**: Implement controls for detected patterns
+5. **Continuous Monitoring**: Enable real-time alerts for similar patterns
+""")
 
-        logs.append({
-            'access_id': f'ACC-{i:06d}',
-            'timestamp': log_time.strftime('%Y-%m-%d %H:%M:%S'),
-            'user_id': user['user_id'],
-            'username': user['username'],
-            'department': user['department'],
-            'data_asset': random.choice(assets),
-            'data_sensitivity': sensitivity,
-            'query_type': random.choice(['SELECT', 'EXPORT', 'API']),
-            'rowcount': rowcount,
-            'access_method': random.choice(['SQL', 'BI_Tool', 'API']),
-            'destination': destination,
-            'status': 'success',
-            'anomaly_marker': marker
-        })
-
-    # Sort logs chronologically
-    logs_df = pd.DataFrame(logs)
-    logs_df['timestamp'] = pd.to_datetime(logs_df['timestamp'])
-    logs_df = logs_df.sort_values('timestamp').reset_index(drop=True)
-    return logs_df
-
-if __name__ == "__main__":
-    print("🚀 Generating Enterprise Synthetic Dataset...")
-    
-    os.makedirs('../data', exist_ok=True)
-    
-    # 1. Generate 100 Profiles
-    profiles_df = generate_profiles(100)
-    profiles_df.to_csv('../data/user_profiles.csv', index=False)
-    print(f"✅ Generated {len(profiles_df)} User Profiles")
-    
-    # 2. Generate 1500 Events (~10% anomalies)
-    logs_df = generate_logs(profiles_df, 1500, 0.10)
-    logs_df.to_csv('../data/data_access_logs.csv', index=False)
-    
-    anomaly_count = logs_df['anomaly_marker'].notna().sum()
-    print(f"✅ Generated {len(logs_df)} Access Logs (Includes {anomaly_count} injected threats)")
+if st.button("🔄 Refresh Analysis"):
+    st.rerun()
     print("Ready for evaluation!")
