@@ -1,0 +1,4 @@
+access_id,timestamp,user_id,username,department,data_asset,data_sensitivity,query_type,rowcount,access_method,destination,status,anomaly_marker
+ACC-001,2026-04-15 14:23:45,USR-0245,alice.smith,Finance,GL_Ledger,high,SELECT,150,SQL,local_workstation,success,
+ACC-002,2026-04-28 22:47:12,USR-0245,alice.smith,Finance,GL_Ledger,high,EXPORT,50000,BI_Tool,internal_share,success,
+ACC-003,2026-04-16 03:15:33,USR-1847,bob.jones,IT,PII_Database,restricted,EXPORT,50000,API,personal_usb,success,NIGHT_BULK_EXPORT_CRITICAL

@@ -1,0 +1,4 @@
+user_id,username,department,job_title,tenure_months,approved_data_assets,avg_queries_per_day,typical_access_hours,avg_rowcount_per_query,high_risk_flag,equipment,access_tier
+USR-0245,alice.smith,Finance,Senior Analyst,48,GL_Ledger|AR_System,12.5,9-17,450,False,company_laptop,senior
+USR-1847,bob.jones,IT,System Admin,3,ALL,25.0,8-18,1000,True,contractor_machine,admin
+USR-0003,diana.intern,Marketing,Intern,1,Public_Campaigns,5.0,10-16,50,False,company_laptop,junior
