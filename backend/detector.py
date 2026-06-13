@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import IsolationForest
+from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
@@ -116,7 +117,74 @@ def train_and_predict(df):
     
     min_score = raw_scores.min()
     max_score = raw_scores.max()
-    df['risk_score'] = 100 - (((raw_scores - min_score) / (max_score - min_score)) * 100)
+    
+    if max_score == min_score:
+        df['ml_score'] = 10.0
+    else:
+        df['ml_score'] = 20 - (((raw_scores - min_score) / (max_score - min_score)) * 20)
+    
+    def calculate_rule_score(row):
+        score = 0
+        breakdown = {}
+        
+        if row.get('destination_risk', 0) >= 4:
+            score += 30
+            breakdown['High-Risk Destination (USB/External)'] = 30
+            
+        if row.get('sensitivity_score', 0) == 3:
+            score += 15
+            breakdown['High Sensitivity Data'] = 15
+        elif row.get('sensitivity_score', 0) >= 4:
+            score += 20
+            breakdown['Restricted Data'] = 20
+            
+        # Safely handle potential empty rowcounts
+        rowcount_val = row.get('rowcount', 0)
+        if pd.isna(rowcount_val): 
+            rowcount_val = 0
+            
+        if rowcount_val >= 50000:
+            score += 25
+            breakdown[f"Extreme Bulk Export ({int(rowcount_val)} records)"] = 25
+        elif row.get('volume_multiplier', 0) > 10:
+            score += 20
+            breakdown[f"Large Export ({row.get('volume_multiplier', 0):.1f}x typical)"] = 20
+        elif row.get('volume_multiplier', 0) > 5:
+            score += 10
+            breakdown[f"Moderate Volume Spike ({row.get('volume_multiplier', 0):.1f}x typical)"] = 10
+            
+        if row.get('is_off_hours') == 1:
+            score += 15
+            breakdown['Off-hours Access'] = 15
+            
+        if row.get('is_high_risk_employee') == 1:
+            score += 15
+            breakdown['HR High-Risk Employee Flag'] = 15
+            
+        if row.get('unapproved_asset_access') == 1:
+            score += 20
+            breakdown['Unapproved Asset Accessed'] = 20
+            
+        if row.get('junior_restricted_access') == 1:
+            score += 20
+            breakdown['Junior Staff Policy Violation'] = 20
+            
+        return score, breakdown
+
+    # --- PANDAS BUG FIX: Explicitly unpacking using standard Python to avoid DataFrame sequence bugs ---
+    rule_scores = []
+    score_breakdowns = []
+    
+    for _, row in df.iterrows():
+        s, b = calculate_rule_score(row)
+        rule_scores.append(float(s))
+        score_breakdowns.append(b)
+        
+    df['rule_score'] = rule_scores
+    df['score_breakdown'] = score_breakdowns
+    # -------------------------------------------------------------------------------------------------
+    
+    df['risk_score'] = (0.8 * df['rule_score']) + (1.2 * df['ml_score'])
     
     mask_seasonality = (df['is_expected_seasonality'] == 1) & (df['destination_risk'] <= 2)
     df.loc[mask_seasonality, 'risk_score'] *= 0.5 
@@ -126,78 +194,41 @@ def train_and_predict(df):
     
     df['risk_score'] = df['risk_score'].clip(lower=0, upper=100.0)
 
-    # --- FIX FOR FRONTEND ITERABLE ERRORS ('justification' & 'recommended_actions') ---
-    def get_reasons(row):
+    # --- FRONTEND PROTECTIONS: Safely build iterables for ALL rows ---
+    def build_justification(row):
         reasons = []
-        if row.get('is_off_hours') == 1:
-            reasons.append(f"Off-hours access (Typical: {row.get('typical_access_hours', 'Unknown')})")
-        if row.get('volume_multiplier', 0) > 3:
-            reasons.append(f"Exported {row.get('volume_multiplier', 0):.1f}x their baseline volume")
-        if row.get('destination_risk', 0) >= 4:
-            reasons.append(f"Exfiltration risk: Data moved to {row.get('destination', 'External')}")
-        if row.get('unapproved_asset_access') == 1:
-            reasons.append(f"First-time/Unapproved access to {row.get('data_asset')}")
-        if row.get('junior_restricted_access') == 1:
-            reasons.append(f"Policy Violation: Junior staff accessing restricted data")
+        breakdown = row.get('score_breakdown', {})
+        for reason, points in breakdown.items():
+            reasons.append(f"{reason} (+{points})")
+            
+        ml_contrib = round(row.get('ml_score', 0) * 1.2, 1)
+        if ml_contrib > 5:
+            reasons.append(f"Behavioral ML Anomaly Detected (+{ml_contrib})")
+            
+        if row.get('is_expected_seasonality') == 1 and row.get('destination_risk', 0) <= 2:
+            reasons.append("Expected Seasonality Suppression (-50% Penalty)")
+            
         return reasons
 
-    def get_actions(row):
-        actions = []
-        if row.get('destination_risk', 0) >= 4:
-            actions.append("Isolate endpoint and block external transfers.")
-        if row.get('unapproved_asset_access') == 1:
-            actions.append("Immediately revoke access to unauthorized data assets.")
-        if row.get('volume_multiplier', 0) > 3:
-            actions.append("Implement temporary data export rate limiting.")
-        if row.get('junior_restricted_access') == 1:
-            actions.append("Audit IAM policies for junior access tiers.")
-        
-        # Fallback action if high risk but no specific rule triggered
-        if not actions and row.get('risk_score', 0) >= 70:
-            actions.append("Review user session logs and contact line manager.")
-            
-        return actions
+    def build_actions(row):
+        score = row.get('risk_score', 0)
+        if score >= 90:
+            return ["Disable account immediately", "Block export destination", "Escalate to SOC", "Review last 72 hours"]
+        elif score >= 75:
+            return ["Manager review", "Investigate user activity", "Monitor closely"]
+        elif score >= 50:
+            return ["Monitor activity", "Verify business justification"]
+        else:
+            return ["No immediate action"]
 
-    # Drop the columns if they mistakenly exist in the CSV as empty float fields
-    if 'justification' in df.columns:
-        df = df.drop(columns=['justification'])
-    if 'recommended_actions' in df.columns:
-        df = df.drop(columns=['recommended_actions'])
-    if 'chatops_triggered' in df.columns:
-        df = df.drop(columns=['chatops_triggered'])
-    if 'chatops_message' in df.columns:
-        df = df.drop(columns=['chatops_message'])
+    # Drop columns if they mistakenly exist in the CSV as empty float fields
+    for col in ['justification', 'recommended_actions']:
+        if col in df.columns:
+            df = df.drop(columns=[col])
 
-    # Guarantee these are valid lists for every row
-    df['justification'] = df.apply(get_reasons, axis=1)
-    df['recommended_actions'] = df.apply(get_actions, axis=1)
-
-    # --- PHASE 2: Zero-Trust ChatOps Logic ---
-    def should_trigger_chatops(row):
-        """
-        ChatOps should trigger ONLY if:
-        1. risk_score is between 70 and 89 (inclusive)
-        2. destination_risk <= 2 (internal storage only)
-        """
-        try:
-            risk_score = row.get('risk_score', 0)
-            destination_risk = row.get('destination_risk', 999)
-            return (70 <= risk_score <= 89) and (destination_risk <= 2)
-        except:
-            return False
-
-    def get_chatops_message(row):
-        """Generate personalized ChatOps interrogation message."""
-        try:
-            username = row.get('username', 'User')
-            data_asset = row.get('data_asset', 'a data asset')
-            return f"Hi {username}, our Zero-Trust system detected an unusually large data pull from {data_asset}. Are you currently performing authorized business tasks?"
-        except:
-            return ""
-
-    # Initialize ChatOps fields for all rows
-    df['chatops_triggered'] = df.apply(should_trigger_chatops, axis=1)
-    df['chatops_message'] = df.apply(lambda row: get_chatops_message(row) if row.get('chatops_triggered', False) else "", axis=1)
+    # Guarantee these are valid lists for every row so the frontend never crashes
+    df['justification'] = df.apply(build_justification, axis=1)
+    df['recommended_actions'] = df.apply(build_actions, axis=1)
 
     return df
 
@@ -206,277 +237,4 @@ def evaluate_model(df, threshold=70):
     Compares the engine's predictions against the ground truth labels 
     to calculate Precision, Recall, F1 Score, and Confusion Matrix.
     """
-    if 'anomaly_marker' not in df.columns:
-        print("No ground truth labels found in dataset. Skipping evaluation.")
-        return
-
-    # Ground Truth: 1 if anomaly_marker is NOT null, 0 if it is normal
-    y_true = df['anomaly_marker'].notna().astype(int)
-    
-    # Prediction: 1 if our risk_score crossed the threshold, 0 if safe
-    y_pred = (df['risk_score'] >= threshold).astype(int)
-
-    precision = precision_score(y_true, y_pred, zero_division=0)
-    recall = recall_score(y_true, y_pred, zero_division=0)
-    f1 = f1_score(y_true, y_pred, zero_division=0)
-    
-    # Calculate False Positives and False Negatives for context
-    tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
-
-    print("\n" + "="*50)
-    print(" 🏆 HACKATHON EVALUATION METRICS 🏆")
-    print("="*50)
-    print(f"Target Threshold:   Risk Score >= {threshold}")
-    print(f"Total Events:       {len(df)}")
-    print(f"Actual Anomalies:   {sum(y_true)}")
-    print("-" * 50)
-    print(f"Precision:          {precision:.2%} (Target: > 75%)")
-    print(f"Recall:             {recall:.2%} (Target: > 70%)")
-    print(f"F1 Score:           {f1:.3f}  (Target: > 0.72)")
-    print("-" * 50)
-    print(" 📊 CONFUSION MATRIX 📊")
-    print("-" * 50)
-    print(f"                     | Predicted Safe (0) | Predicted Threat (1)")
-    print(f"---------------------|--------------------|---------------------")
-    print(f" Actual Safe (0)     | TN: {tn:<14} | FP: {fp:<14}")
-    print(f" Actual Threat (1)   | FN: {fn:<14} | TP: {tp:<14}")
-    print("="*50 + "\n")
-
-
-def get_clustering_simulation_data(profiles_path=None):
-    """
-    Standalone peer-group clustering for ATO threat simulation.
-    Does not call train_and_predict or alter the main detection pipeline.
-    """
-    if profiles_path is None:
-        profiles_path = Path(__file__).resolve().parent.parent / "data" / "user_profiles.csv"
-    else:
-        profiles_path = Path(profiles_path)
-
-    df = pd.read_csv(profiles_path)
-
-    tier_map = {
-        "junior": 1,
-        "contractor": 2,
-        "standard": 3,
-        "senior": 4,
-        "admin": 5,
-        "executive": 6,
-    }
-    df["tier_num"] = (
-        df["access_tier"]
-        .astype(str)
-        .str.lower()
-        .map(tier_map)
-        .fillna(3)
-        .astype(int)
-    )
-
-    feature_cols = ["tier_num", "avg_queries_per_day", "avg_rowcount_per_query"]
-    scaled_features = StandardScaler().fit_transform(df[feature_cols].fillna(0))
-
-    kmeans = KMeans(n_clusters=4, random_state=42)
-    df["user_cluster_id"] = kmeans.fit_predict(scaled_features)
-
-    cluster_names = {
-        0: "9-to-5ers",
-        1: "Heavy Lifters (Admins)",
-        2: "Data Crunchers (Finance)",
-        3: "Contractors",
-    }
-    df["user_cluster"] = df["user_cluster_id"].map(cluster_names)
-
-    return df.fillna("").to_dict(orient="records")
-
-
-ATO_SCENARIOS = {
-    "NIGHT_BULK_EXPORT_CRITICAL": {
-        "label": "Midnight USB Exfiltration",
-        "icon": "🌑",
-        "severity": "CRITICAL",
-        "description": "Restricted data copied to personal USB between 00:00–04:59 with 50K–250K rows.",
-        "signals": ["Off-hours access", "personal_usb destination", "restricted sensitivity"],
-        "query_multiplier": 4.0,
-        "row_multiplier": 120.0,
-        "hours_override": "0-4",
-    },
-    "INTERN_RESTRICTED_ACCESS": {
-        "label": "Intern Privilege Escalation",
-        "icon": "🎓",
-        "severity": "HIGH",
-        "description": "Junior role accessing restricted assets and routing data to external email.",
-        "signals": ["Role/asset mismatch", "restricted PII", "external_email"],
-        "query_multiplier": 3.5,
-        "row_multiplier": 25.0,
-        "hours_override": "8-18",
-    },
-    "OFF_HOURS_BULK_EXPORT": {
-        "label": "Off-Hours Bulk Export",
-        "icon": "🌙",
-        "severity": "HIGH",
-        "description": "Mass cloud export during 00:00–05:59 — 20K–80K rows outside typical hours.",
-        "signals": ["Pre-dawn activity", "cloud_storage", "bulk EXPORT"],
-        "query_multiplier": 3.0,
-        "row_multiplier": 80.0,
-        "hours_override": "0-5",
-    },
-    "FLIGHT_RISK_EXFILTRATION": {
-        "label": "Flight-Risk Data Theft",
-        "icon": "✈️",
-        "severity": "CRITICAL",
-        "description": "High-risk flagged employee pushes 10K–50K rows to external email in business hours.",
-        "signals": ["high_risk_flag user", "external_email", "volume spike"],
-        "query_multiplier": 5.0,
-        "row_multiplier": 60.0,
-        "hours_override": "8-18",
-    },
-}
-
-
-def get_ato_simulation_context(profiles_path=None, logs_path=None):
-    """
-    Role-peer baselines, attack scenarios, and exemplar events for the ATO simulation UI.
-    """
-    if profiles_path is None:
-        profiles_path = Path(__file__).resolve().parent.parent / "data" / "user_profiles.csv"
-    else:
-        profiles_path = Path(profiles_path)
-
-    if logs_path is None:
-        logs_path = Path(__file__).resolve().parent.parent / "data" / "data_access_logs.csv"
-    else:
-        logs_path = Path(logs_path)
-
-    profiles = pd.read_csv(profiles_path)
-    logs = pd.read_csv(logs_path)
-    merged = logs.merge(profiles, on="user_id", how="left", suffixes=("", "_profile"))
-
-    role_stats = (
-        profiles.groupby("job_title", as_index=False)
-        .agg(
-            user_count=("user_id", "count"),
-            median_queries=("avg_queries_per_day", "median"),
-            median_rows=("avg_rowcount_per_query", "median"),
-            median_tenure=("tenure_months", "median"),
-        )
-        .sort_values("user_count", ascending=False)
-    )
-
-    scenario_users = {}
-    scenario_events = {}
-    for marker, meta in ATO_SCENARIOS.items():
-        events = merged[merged["anomaly_marker"] == marker].copy()
-        scenario_events[marker] = events.sort_values("timestamp").fillna("").to_dict(orient="records")
-        if events.empty:
-            scenario_users[marker] = []
-            continue
-        users = (
-            events.groupby(["user_id", "username", "job_title", "department"], as_index=False)
-            .agg(event_count=("access_id", "count"), max_rows=("rowcount", "max"))
-            .sort_values(["event_count", "max_rows"], ascending=False)
-        )
-        scenario_users[marker] = users.fillna("").to_dict(orient="records")
-
-    cluster_records = get_clustering_simulation_data(profiles_path)
-
-    return {
-        "role_count": int(profiles["job_title"].nunique()),
-        "job_roles": sorted(profiles["job_title"].unique().tolist()),
-        "role_stats": role_stats.fillna("").to_dict(orient="records"),
-        "scenarios": {
-            marker: {**meta, "marker": marker, "event_count": len(scenario_events[marker])}
-            for marker, meta in ATO_SCENARIOS.items()
-        },
-        "scenario_users": scenario_users,
-        "scenario_events": scenario_events,
-        "profiles": cluster_records,
-    }
-
-
-def get_alerts_for_ui(logs_path, profiles_path, threshold=70):
-    """Called by the UI to fetch real-time alerts."""
-    df = load_and_merge_data(logs_path, profiles_path)
-    df = feature_engineering(df)
-    df = train_and_predict(df)
-    
-    alerts_df = df[df['risk_score'] >= threshold].copy()
-    alerts_df = alerts_df.sort_values(by='risk_score', ascending=False)
-    
-    alerts_list = []
-    for _, row in alerts_df.iterrows():
-        alert = {
-            "access_id": str(row.get('access_id', 'UNKNOWN')),
-            "timestamp": str(row['timestamp']),
-            "user_id": str(row['user_id']),
-            "username": str(row.get('username', 'UNKNOWN')),
-            "department": str(row.get('department', 'UNKNOWN')),
-            "data_asset": str(row.get('data_asset', 'UNKNOWN')),
-            "risk_score": round(row['risk_score'], 1),
-            "severity": "CRITICAL" if row['risk_score'] >= 90 else "HIGH",
-            "justification": row['justification'],          # Guaranteed list
-            "recommended_actions": row['recommended_actions'], # Guaranteed list
-            "chatops_triggered": bool(row.get('chatops_triggered', False)),  # Boolean
-            "chatops_message": str(row.get('chatops_message', '')),  # String
-            "raw_context": row.fillna("").to_dict() 
-        }
-        alerts_list.append(alert)
-        
-    return alerts_list
-
-
-def get_scored_events_for_ui(logs_path, profiles_path):
-    """Called by the UI to fetch all events with their calculated risk scores."""
-    df = load_and_merge_data(logs_path, profiles_path)
-    df = feature_engineering(df)
-    df = train_and_predict(df)
-    
-    # Sort by most recent first
-    df = df.sort_values(by='timestamp', ascending=False)
-    
-    # Convert timestamps to strings so they are JSON serializable for the frontend
-    df['timestamp'] = df['timestamp'].astype(str)
-    
-    # Ensure ChatOps fields are properly typed before conversion
-    if 'chatops_triggered' not in df.columns:
-        df['chatops_triggered'] = False
-    if 'chatops_message' not in df.columns:
-        df['chatops_message'] = ""
-    
-    df['chatops_triggered'] = df['chatops_triggered'].fillna(False).astype(bool)
-    df['chatops_message'] = df['chatops_message'].fillna('').astype(str)
-    
-    # Convert the entire dataframe to a list of dictionaries
-    events_list = df.fillna("").to_dict(orient='records')
-    
-    # Post-process to ensure proper types for JSON serialization
-    for event in events_list:
-        event['chatops_triggered'] = bool(event.get('chatops_triggered', False))
-        event['chatops_message'] = str(event.get('chatops_message', ''))
-    
-    return events_list
-
-
-if __name__ == "__main__":
-    # Corrected path resolution using .parent.parent to avoid TypeError
-    project_root = Path(__file__).resolve().parent.parent
-    logs = project_root / "data" / "data_access_logs.csv"
-    profs = project_root / "data" / "user_profiles.csv"
-    
-    if os.path.exists(logs) and os.path.exists(profs):
-        # 1. First, process the data to get the dataframe
-        df = load_and_merge_data(logs, profs)
-        df = feature_engineering(df)
-        df = train_and_predict(df)
-        
-        # 2. Print the top alert as a sanity check FIRST
-        alerts = get_alerts_for_ui(logs, profs, threshold=70)
-        if alerts:
-            print("🚨 TOP ALERT JSON FEED (For Streamlit UI) 🚨")
-            print(json.dumps(alerts, indent=2, default=str))
-            print("\n")
-            
-        # 3. Run the evaluation to print the metrics and Confusion Matrix LAST
-        evaluate_model(df, threshold=70)
-        
-    else:
-        print("Please place the CSV files in the data/ directory.")
+    if 'anomaly_marker' not in df.columns
