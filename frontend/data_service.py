@@ -31,6 +31,8 @@ EVENT_COLUMNS = [
     "destination",
     "query_type",
     "raw_context",
+    "chatops_triggered",
+    "chatops_message",
 ]
 
 

@@ -84,6 +84,54 @@ for _, row in filtered_df.iterrows():
         
         st.markdown("<br>", unsafe_allow_html=True)
         
+        # --- Phase 2: Zero-Trust ChatOps Component ---
+        if row.get('chatops_triggered', False):
+            st.markdown("---")
+            st.info(
+                f"🤖 **Zero-Trust ChatOps Interrogation**\n\n"
+                f"{row.get('chatops_message', '')}"
+            )
+            
+            # Create columns for ChatOps action buttons
+            col_yes, col_no, col_spacer = st.columns([1, 1, 2])
+            
+            # Initialize session state for this specific alert
+            yes_key = f"chatops_yes_{row['access_id']}"
+            no_key = f"chatops_no_{row['access_id']}"
+            response_key = f"chatops_response_{row['access_id']}"
+            
+            # Track alert state changes
+            if response_key not in st.session_state:
+                st.session_state[response_key] = None
+            
+            with col_yes:
+                if st.button("✅ Yes, verify via MFA", key=yes_key):
+                    st.session_state[response_key] = "verified"
+                    st.toast("✅ User verified. Alert downgraded to False Positive.", icon="✅")
+                    st.rerun()
+            
+            with col_no:
+                if st.button("❌ No, I didn't do this", key=no_key):
+                    st.session_state[response_key] = "denied"
+                    st.error("🚨 CRITICAL: Account Isolation Triggered.")
+                    st.rerun()
+            
+            # Display response state if captured
+            if st.session_state.get(response_key) == "verified":
+                st.success("✅ **Status:** Alert Downgraded - User MFA Verified")
+                st.markdown("This incident has been marked as a false positive.")
+            elif st.session_state.get(response_key) == "denied":
+                st.error(
+                    "🚨 **Status:** CRITICAL - Account Isolation Active\n\n"
+                    "**Actions Taken:**\n"
+                    "• User account access suspended\n"
+                    "• Network egress blocked\n"
+                    "• SOC incident response activated\n"
+                    "• Forensics and audit logging initiated"
+                )
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
         # 4. Deep Dive Routing
         if st.button("Deep Dive Investigation", key=f"btn_{row['access_id']}"):
             # Save the ID to session state so the Investigation page knows what to load
