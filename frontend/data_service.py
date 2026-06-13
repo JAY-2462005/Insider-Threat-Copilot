@@ -14,7 +14,12 @@ PROFILES_PATH = DATA_DIR / "user_profiles.csv"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from detector import get_alerts_for_ui, get_scored_events_for_ui  # noqa: E402
+from detector import (  # noqa: E402
+    get_alerts_for_ui,
+    get_ato_simulation_context,
+    get_clustering_simulation_data,
+    get_scored_events_for_ui,
+)
 
 
 EVENT_COLUMNS = [
@@ -46,11 +51,31 @@ def _load_alerts(logs_path: str, profiles_path: str, threshold: int):
     return get_alerts_for_ui(logs_path, profiles_path, threshold)
 
 
+@st.cache_data(show_spinner=False)
+def _load_clustering_simulation(profiles_path: str):
+    return get_clustering_simulation_data(profiles_path)
+
+
+@st.cache_data(show_spinner=False)
+def _load_ato_simulation(logs_path: str, profiles_path: str):
+    return get_ato_simulation_context(profiles_path, logs_path)
+
+
 def clear_data_cache():
     _load_scored_events.clear()
     _load_alerts.clear()
+    _load_clustering_simulation.clear()
+    _load_ato_simulation.clear()
     st.session_state.pop("alerts", None)
     st.session_state.pop("events", None)
+
+
+def get_clustering_data():
+    return _load_clustering_simulation(str(PROFILES_PATH))
+
+
+def get_ato_simulation():
+    return _load_ato_simulation(str(LOGS_PATH), str(PROFILES_PATH))
 
 
 def get_data_paths():

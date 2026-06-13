@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import IsolationForest
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
 import json
 import os
@@ -239,6 +241,156 @@ def evaluate_model(df, threshold=70):
     print(f" Actual Safe (0)     | TN: {tn:<14} | FP: {fp:<14}")
     print(f" Actual Threat (1)   | FN: {fn:<14} | TP: {tp:<14}")
     print("="*50 + "\n")
+
+
+def get_clustering_simulation_data(profiles_path=None):
+    """
+    Standalone peer-group clustering for ATO threat simulation.
+    Does not call train_and_predict or alter the main detection pipeline.
+    """
+    if profiles_path is None:
+        profiles_path = Path(__file__).resolve().parent.parent / "data" / "user_profiles.csv"
+    else:
+        profiles_path = Path(profiles_path)
+
+    df = pd.read_csv(profiles_path)
+
+    tier_map = {
+        "junior": 1,
+        "contractor": 2,
+        "standard": 3,
+        "senior": 4,
+        "admin": 5,
+        "executive": 6,
+    }
+    df["tier_num"] = (
+        df["access_tier"]
+        .astype(str)
+        .str.lower()
+        .map(tier_map)
+        .fillna(3)
+        .astype(int)
+    )
+
+    feature_cols = ["tier_num", "avg_queries_per_day", "avg_rowcount_per_query"]
+    scaled_features = StandardScaler().fit_transform(df[feature_cols].fillna(0))
+
+    kmeans = KMeans(n_clusters=4, random_state=42)
+    df["user_cluster_id"] = kmeans.fit_predict(scaled_features)
+
+    cluster_names = {
+        0: "9-to-5ers",
+        1: "Heavy Lifters (Admins)",
+        2: "Data Crunchers (Finance)",
+        3: "Contractors",
+    }
+    df["user_cluster"] = df["user_cluster_id"].map(cluster_names)
+
+    return df.fillna("").to_dict(orient="records")
+
+
+ATO_SCENARIOS = {
+    "NIGHT_BULK_EXPORT_CRITICAL": {
+        "label": "Midnight USB Exfiltration",
+        "icon": "🌑",
+        "severity": "CRITICAL",
+        "description": "Restricted data copied to personal USB between 00:00–04:59 with 50K–250K rows.",
+        "signals": ["Off-hours access", "personal_usb destination", "restricted sensitivity"],
+        "query_multiplier": 4.0,
+        "row_multiplier": 120.0,
+        "hours_override": "0-4",
+    },
+    "INTERN_RESTRICTED_ACCESS": {
+        "label": "Intern Privilege Escalation",
+        "icon": "🎓",
+        "severity": "HIGH",
+        "description": "Junior role accessing restricted assets and routing data to external email.",
+        "signals": ["Role/asset mismatch", "restricted PII", "external_email"],
+        "query_multiplier": 3.5,
+        "row_multiplier": 25.0,
+        "hours_override": "8-18",
+    },
+    "OFF_HOURS_BULK_EXPORT": {
+        "label": "Off-Hours Bulk Export",
+        "icon": "🌙",
+        "severity": "HIGH",
+        "description": "Mass cloud export during 00:00–05:59 — 20K–80K rows outside typical hours.",
+        "signals": ["Pre-dawn activity", "cloud_storage", "bulk EXPORT"],
+        "query_multiplier": 3.0,
+        "row_multiplier": 80.0,
+        "hours_override": "0-5",
+    },
+    "FLIGHT_RISK_EXFILTRATION": {
+        "label": "Flight-Risk Data Theft",
+        "icon": "✈️",
+        "severity": "CRITICAL",
+        "description": "High-risk flagged employee pushes 10K–50K rows to external email in business hours.",
+        "signals": ["high_risk_flag user", "external_email", "volume spike"],
+        "query_multiplier": 5.0,
+        "row_multiplier": 60.0,
+        "hours_override": "8-18",
+    },
+}
+
+
+def get_ato_simulation_context(profiles_path=None, logs_path=None):
+    """
+    Role-peer baselines, attack scenarios, and exemplar events for the ATO simulation UI.
+    """
+    if profiles_path is None:
+        profiles_path = Path(__file__).resolve().parent.parent / "data" / "user_profiles.csv"
+    else:
+        profiles_path = Path(profiles_path)
+
+    if logs_path is None:
+        logs_path = Path(__file__).resolve().parent.parent / "data" / "data_access_logs.csv"
+    else:
+        logs_path = Path(logs_path)
+
+    profiles = pd.read_csv(profiles_path)
+    logs = pd.read_csv(logs_path)
+    merged = logs.merge(profiles, on="user_id", how="left", suffixes=("", "_profile"))
+
+    role_stats = (
+        profiles.groupby("job_title", as_index=False)
+        .agg(
+            user_count=("user_id", "count"),
+            median_queries=("avg_queries_per_day", "median"),
+            median_rows=("avg_rowcount_per_query", "median"),
+            median_tenure=("tenure_months", "median"),
+        )
+        .sort_values("user_count", ascending=False)
+    )
+
+    scenario_users = {}
+    scenario_events = {}
+    for marker, meta in ATO_SCENARIOS.items():
+        events = merged[merged["anomaly_marker"] == marker].copy()
+        scenario_events[marker] = events.sort_values("timestamp").fillna("").to_dict(orient="records")
+        if events.empty:
+            scenario_users[marker] = []
+            continue
+        users = (
+            events.groupby(["user_id", "username", "job_title", "department"], as_index=False)
+            .agg(event_count=("access_id", "count"), max_rows=("rowcount", "max"))
+            .sort_values(["event_count", "max_rows"], ascending=False)
+        )
+        scenario_users[marker] = users.fillna("").to_dict(orient="records")
+
+    cluster_records = get_clustering_simulation_data(profiles_path)
+
+    return {
+        "role_count": int(profiles["job_title"].nunique()),
+        "job_roles": sorted(profiles["job_title"].unique().tolist()),
+        "role_stats": role_stats.fillna("").to_dict(orient="records"),
+        "scenarios": {
+            marker: {**meta, "marker": marker, "event_count": len(scenario_events[marker])}
+            for marker, meta in ATO_SCENARIOS.items()
+        },
+        "scenario_users": scenario_users,
+        "scenario_events": scenario_events,
+        "profiles": cluster_records,
+    }
 
 
 def get_alerts_for_ui(logs_path, profiles_path, threshold=70):
