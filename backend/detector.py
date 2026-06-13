@@ -161,10 +161,41 @@ def train_and_predict(df):
         df = df.drop(columns=['justification'])
     if 'recommended_actions' in df.columns:
         df = df.drop(columns=['recommended_actions'])
+    if 'chatops_triggered' in df.columns:
+        df = df.drop(columns=['chatops_triggered'])
+    if 'chatops_message' in df.columns:
+        df = df.drop(columns=['chatops_message'])
 
     # Guarantee these are valid lists for every row
     df['justification'] = df.apply(get_reasons, axis=1)
     df['recommended_actions'] = df.apply(get_actions, axis=1)
+
+    # --- PHASE 2: Zero-Trust ChatOps Logic ---
+    def should_trigger_chatops(row):
+        """
+        ChatOps should trigger ONLY if:
+        1. risk_score is between 70 and 89 (inclusive)
+        2. destination_risk <= 2 (internal storage only)
+        """
+        try:
+            risk_score = row.get('risk_score', 0)
+            destination_risk = row.get('destination_risk', 999)
+            return (70 <= risk_score <= 89) and (destination_risk <= 2)
+        except:
+            return False
+
+    def get_chatops_message(row):
+        """Generate personalized ChatOps interrogation message."""
+        try:
+            username = row.get('username', 'User')
+            data_asset = row.get('data_asset', 'a data asset')
+            return f"Hi {username}, our Zero-Trust system detected an unusually large data pull from {data_asset}. Are you currently performing authorized business tasks?"
+        except:
+            return ""
+
+    # Initialize ChatOps fields for all rows
+    df['chatops_triggered'] = df.apply(should_trigger_chatops, axis=1)
+    df['chatops_message'] = df.apply(lambda row: get_chatops_message(row) if row.get('chatops_triggered', False) else "", axis=1)
 
     return df
 
@@ -232,6 +263,8 @@ def get_alerts_for_ui(logs_path, profiles_path, threshold=70):
             "severity": "CRITICAL" if row['risk_score'] >= 90 else "HIGH",
             "justification": row['justification'],          # Guaranteed list
             "recommended_actions": row['recommended_actions'], # Guaranteed list
+            "chatops_triggered": bool(row.get('chatops_triggered', False)),  # Boolean
+            "chatops_message": str(row.get('chatops_message', '')),  # String
             "raw_context": row.fillna("").to_dict() 
         }
         alerts_list.append(alert)
@@ -251,8 +284,24 @@ def get_scored_events_for_ui(logs_path, profiles_path):
     # Convert timestamps to strings so they are JSON serializable for the frontend
     df['timestamp'] = df['timestamp'].astype(str)
     
+    # Ensure ChatOps fields are properly typed before conversion
+    if 'chatops_triggered' not in df.columns:
+        df['chatops_triggered'] = False
+    if 'chatops_message' not in df.columns:
+        df['chatops_message'] = ""
+    
+    df['chatops_triggered'] = df['chatops_triggered'].fillna(False).astype(bool)
+    df['chatops_message'] = df['chatops_message'].fillna('').astype(str)
+    
     # Convert the entire dataframe to a list of dictionaries
-    return df.fillna("").to_dict(orient='records')
+    events_list = df.fillna("").to_dict(orient='records')
+    
+    # Post-process to ensure proper types for JSON serialization
+    for event in events_list:
+        event['chatops_triggered'] = bool(event.get('chatops_triggered', False))
+        event['chatops_message'] = str(event.get('chatops_message', ''))
+    
+    return events_list
 
 
 if __name__ == "__main__":
