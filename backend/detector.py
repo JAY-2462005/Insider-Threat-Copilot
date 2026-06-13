@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import IsolationForest
+from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
 import json
 import os
 
@@ -79,7 +80,7 @@ def feature_engineering(df):
     def junior_restricted(row):
         try:
             is_junior = str(row.get('access_tier', '')).lower() in ['junior', 'intern']
-            is_restricted = row['sensitivity_score'] >= 4  
+            is_restricted = row['sensitivity_score'] >= 3
             if is_junior and is_restricted:
                 return 1
             return 0
@@ -91,7 +92,7 @@ def feature_engineering(df):
     return df
 
 def train_and_predict(df):
-    """Generates a Hybrid Risk Score (Rules + ML + Context) for 100% explainability."""
+    """Runs Isolation Forest and generates a Context-Aware Risk Score 0-100."""
     features = [
         'is_off_hours', 
         'volume_multiplier', 
@@ -107,78 +108,64 @@ def train_and_predict(df):
     
     iso_forest = IsolationForest(contamination=0.1, random_state=42)
     df['anomaly_label'] = iso_forest.fit_predict(X)
+    
     raw_scores = iso_forest.decision_function(X)
     
     min_score = raw_scores.min()
     max_score = raw_scores.max()
-    
-    if max_score == min_score:
-        df['ml_score'] = 10.0
-    else:
-        df['ml_score'] = 20 - (((raw_scores - min_score) / (max_score - min_score)) * 20)
-    
-    def calculate_rule_score(row):
-        score = 0
-        breakdown = {}
-        
-        if row['destination_risk'] >= 4:
-            score += 30
-            breakdown['High-Risk Destination (USB/External)'] = 30
-            
-        if row['sensitivity_score'] == 3:
-            score += 15
-            breakdown['High Sensitivity Data'] = 15
-        elif row['sensitivity_score'] >= 4:
-            score += 20
-            breakdown['Restricted Data'] = 20
-            
-        # Tiered Volume Thresholds targeting exact prompt requirements
-        if row['rowcount'] >= 50000:
-            score += 25
-            breakdown[f"Extreme Bulk Export ({int(row['rowcount'])} records)"] = 25
-        elif row['volume_multiplier'] > 10:
-            score += 20
-            breakdown[f"Large Export ({row['volume_multiplier']:.1f}x typical)"] = 20
-        elif row['volume_multiplier'] > 5:
-            score += 10
-            breakdown[f"Moderate Volume Spike ({row['volume_multiplier']:.1f}x typical)"] = 10
-            
-        if row['is_off_hours'] == 1:
-            score += 15
-            breakdown['Off-hours Access'] = 15
-            
-        if row['is_high_risk_employee'] == 1:
-            score += 15
-            breakdown['HR High-Risk Employee Flag'] = 15
-            
-        if row['unapproved_asset_access'] == 1:
-            score += 20
-            breakdown['Unapproved Asset Accessed'] = 20
-            
-        if row['junior_restricted_access'] == 1:
-            score += 20
-            breakdown['Junior Staff Policy Violation'] = 20
-            
-        return score, breakdown
-
-    # Fixed Tuple Unpacking
-    rule_results = df.apply(calculate_rule_score, axis=1)
-
-    df['rule_score'] = rule_results.apply(lambda x: x[0])
-
-    df['score_breakdown'] = rule_results.apply(lambda x: x[1])
-    
-    df['risk_score'] = (0.8 * df['rule_score']) + (1.2 * df['ml_score'])
+    df['risk_score'] = 100 - (((raw_scores - min_score) / (max_score - min_score)) * 100)
     
     mask_seasonality = (df['is_expected_seasonality'] == 1) & (df['destination_risk'] <= 2)
     df.loc[mask_seasonality, 'risk_score'] *= 0.5 
 
+    mask_critical = (df['destination_risk'] >= 4) & ((df['is_high_risk_employee'] == 1) | (df['unapproved_asset_access'] == 1))
+    df.loc[mask_critical, 'risk_score'] = 99.0
+    
     df['risk_score'] = df['risk_score'].clip(lower=0, upper=100.0)
 
     return df
 
+def evaluate_model(df, threshold=70):
+    """
+    Compares the engine's predictions against the ground truth labels 
+    to calculate Precision, Recall, and F1 Score for the judges.
+    """
+    if 'anomaly_marker' not in df.columns:
+        print("No ground truth labels found in dataset. Skipping evaluation.")
+        return
+
+    # Ground Truth: 1 if anomaly_marker is NOT null, 0 if it is normal
+    y_true = df['anomaly_marker'].notna().astype(int)
+    
+    # Prediction: 1 if our risk_score crossed the threshold, 0 if safe
+    y_pred = (df['risk_score'] >= threshold).astype(int)
+
+    precision = precision_score(y_true, y_pred, zero_division=0)
+    recall = recall_score(y_true, y_pred, zero_division=0)
+    f1 = f1_score(y_true, y_pred, zero_division=0)
+    
+    # Calculate False Positives and False Negatives for context
+    tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+
+    print("\n" + "="*40)
+    print(" 🏆 HACKATHON EVALUATION METRICS 🏆")
+    print("="*40)
+    print(f"Target Threshold:   Risk Score >= {threshold}")
+    print(f"Total Events:       {len(df)}")
+    print(f"Actual Anomalies:   {sum(y_true)}")
+    print("-"*40)
+    print(f"Precision:          {precision:.2%} (Target: > 75%)")
+    print(f"Recall:             {recall:.2%} (Target: > 70%)")
+    print(f"F1 Score:           {f1:.3f}  (Target: > 0.72)")
+    print("-"*40)
+    print(f"True Threats Caught (TP):  {tp}")
+    print(f"False Alarms Triggered (FP): {fp}")
+    print(f"Threats Missed (FN):       {fn}")
+    print("="*40 + "\n")
+
+
 def get_alerts_for_ui(logs_path, profiles_path, threshold=70):
-    """Called by the UI to fetch highly explainable real-time alerts."""
+    """Called by the UI to fetch real-time alerts."""
     df = load_and_merge_data(logs_path, profiles_path)
     df = feature_engineering(df)
     df = train_and_predict(df)
@@ -188,61 +175,29 @@ def get_alerts_for_ui(logs_path, profiles_path, threshold=70):
     
     alerts_list = []
     for _, row in alerts_df.iterrows():
-        
         reasons = []
-        breakdown = row['score_breakdown']
-        
-        for reason, points in breakdown.items():
-            reasons.append(f"{reason} (+{points})")
+        if row['is_off_hours'] == 1:
+            reasons.append(f"Off-hours access (Typical: {row.get('typical_access_hours', 'Unknown')})")
+        if row['volume_multiplier'] > 3:
+            reasons.append(f"Exported {row['volume_multiplier']:.1f}x their baseline volume")
+        if row['destination_risk'] >= 4:
+            reasons.append(f"Exfiltration risk: Data moved to {row.get('destination', 'External')}")
+        if row['unapproved_asset_access'] == 1:
+            reasons.append(f"First-time/Unapproved access to {row.get('data_asset')}")
+        if row['junior_restricted_access'] == 1:
+            reasons.append(f"Policy Violation: Junior staff accessing restricted data")
             
-        ml_contrib = round(row['ml_score'] * 1.2, 1)
-        if ml_contrib > 5:
-            reasons.append(f"Behavioral ML Anomaly Detected (+{ml_contrib})")
-            
-        if row['is_expected_seasonality'] == 1 and row['destination_risk'] <= 2:
-            reasons.append("Expected Seasonality Suppression (-50% Penalty)")
-
-        score = row['risk_score']
-        actions = []
-        
-        if score >= 90:
-            severity = "CRITICAL"
-            actions = [
-                "Disable account immediately",
-                "Block export destination",
-                "Escalate to SOC",
-                "Review last 72 hours"
-            ]
-        elif score >= 75:
-            severity = "HIGH"
-            actions = [
-                "Manager review",
-                "Investigate user activity",
-                "Monitor closely"
-            ]
-        elif score >= 50:
-            severity = "MEDIUM"
-            actions = [
-                "Monitor activity",
-                "Verify business justification"
-            ]
-        else:
-            severity = "LOW"
-            actions = [
-                "No immediate action"
-            ]
-
         alert = {
             "access_id": str(row.get('access_id', 'UNKNOWN')),
             "timestamp": str(row['timestamp']),
+            "user_id": str(row['user_id']),
             "username": str(row.get('username', 'UNKNOWN')),
             "department": str(row.get('department', 'UNKNOWN')),
             "data_asset": str(row.get('data_asset', 'UNKNOWN')),
-            "risk_score": round(score, 1),
-            "severity": severity,
-            "justification": reasons,
-            "recommended_actions": actions,
-            "raw_context": row.fillna("").to_dict()
+            "risk_score": round(row['risk_score'], 1),
+            "severity": "CRITICAL" if row['risk_score'] >= 90 else "HIGH",
+            "anomalies_detected": reasons,
+            "raw_context": row.fillna("").to_dict() 
         }
         alerts_list.append(alert)
         
@@ -253,9 +208,18 @@ if __name__ == "__main__":
     profs = "../data/user_profiles.csv"
     
     if os.path.exists(logs) and os.path.exists(profs):
+        # 1. First, process the data to get the dataframe
+        df = load_and_merge_data(logs, profs)
+        df = feature_engineering(df)
+        df = train_and_predict(df)
+        
+        # 2. Run the evaluation to print the scorecard to the terminal
+        evaluate_model(df, threshold=70)
+        
+        # 3. Print the top alert as a sanity check
         alerts = get_alerts_for_ui(logs, profs, threshold=70)
-        print(f"Detected {len(alerts)} Alerts over threshold!")
         if alerts:
-            print(json.dumps(alerts, indent=2, default=str))
+            print("🚨 TOP ALERT JSON FEED (For Streamlit UI) 🚨")
+            print(json.dumps(alerts[0], indent=2, default=str))
     else:
         print("Please place the CSV files in the data/ directory.")
