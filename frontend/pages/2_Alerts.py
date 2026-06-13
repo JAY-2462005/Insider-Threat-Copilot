@@ -1,26 +1,36 @@
 import streamlit as st
-import pandas as pd
+import os
+import sys
 
-st.set_page_config(page_title="Alerts Queue", layout="wide")
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from data_service import get_alerts_dataframe, get_threshold
+
+st.set_page_config(page_title="Alerts Queue", page_icon="🚨", layout="wide")
 st.title("🚨 Full Threat Queue")
 
-alerts = st.session_state.get('alerts', [])
-if not alerts:
-    st.info("No alerts available. Please generate alerts from the backend.")
+try:
+    df = get_alerts_dataframe(get_threshold())
+except FileNotFoundError:
+    st.error("❌ Data files not found. Please run generate_ps4_data.py first.")
+    st.stop()
+except Exception as e:
+    st.error(f"❌ Error loading backend alerts: {str(e)}")
     st.stop()
 
-df = pd.DataFrame(alerts)
+if df.empty:
+    st.success("✅ No alerts detected above the selected threshold. Queue is clear.")
+    st.stop()
 
 # --- Filters ---
 st.subheader("Filter Threats")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    sev_filter = st.selectbox("Severity", ["ALL"] + list(df['severity'].unique()))
+    sev_filter = st.selectbox("Severity", ["ALL"] + sorted(df['severity'].dropna().unique()))
 with col2:
-    dept_filter = st.selectbox("Department", ["ALL"] + list(df['department'].unique()))
+    dept_filter = st.selectbox("Department", ["ALL"] + sorted(df['department'].dropna().unique()))
 with col3:
-    user_filter = st.selectbox("Username", ["ALL"] + list(df['username'].unique()))
+    user_filter = st.selectbox("Username", ["ALL"] + sorted(df['username'].dropna().unique()))
 
 # --- Apply Filters ---
 filtered_df = df.copy()

@@ -1,32 +1,42 @@
 import streamlit as st
 import pandas as pd
-import json
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from data_service import get_alerts, get_alerts_dataframe, get_threshold
+
+try:
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend')))
+    from llm_summary import generate_investigation_narrative, is_gemini_configured
+    GEMINI_AVAILABLE = True
+except Exception:
+    GEMINI_AVAILABLE = False
 
 st.set_page_config(page_title="Investigation Workbench", page_icon="🔍", layout="wide")
 
 st.title("🔍 Analyst Investigation Workbench")
 
-# --- 1. Load Data ---
-alerts = st.session_state.get('alerts', [])
+try:
+    alerts = get_alerts(get_threshold())
+    df = get_alerts_dataframe(get_threshold())
+except FileNotFoundError:
+    st.error("❌ Data files not found. Please run generate_ps4_data.py first.")
+    st.stop()
+except Exception as e:
+    st.error(f"❌ Error loading backend alerts: {str(e)}")
+    st.stop()
 
-# Resilience Check: If someone opens this page first, load the JSON directly
-if not alerts:
-    try:
-        with open("../outputs/alerts.json", "r") as f:
-            alerts = json.load(f)
-            st.session_state['alerts'] = alerts
-    except FileNotFoundError:
-        st.info("No alerts available. Please generate alerts from the backend.")
-        st.stop()
-
-df = pd.DataFrame(alerts)
+if df.empty:
+    st.info("No alerts available at the selected threshold.")
+    st.stop()
 
 # --- 2. DEEP DIVE PANEL (Appears when an incident is selected) ---
 inspect_id = st.session_state.get('selected_access_id')
 
 if inspect_id and inspect_id in df['access_id'].values:
     st.markdown("---")
-    alert = df[df['access_id'] == inspect_id].iloc
+    alert = df[df['access_id'] == inspect_id].iloc[0]
     context = alert.get('raw_context', {})
     
     st.error(f"### 🎯 Active Target: `{alert['username']}` | Risk Score: {alert['risk_score']} ({alert['severity']})")
@@ -39,7 +49,7 @@ if inspect_id and inspect_id in df['access_id'].values:
         
         # Safely extract time strings
         timestamp_str = str(alert['timestamp'])
-        event_time = timestamp_str.split(' ') if ' ' in timestamp_str else timestamp_str
+        event_time = timestamp_str.split(' ')[1] if ' ' in timestamp_str else timestamp_str
         
         baseline_comparison = pd.DataFrame({
             "Metric": ["Access Time", "Data Volume", "Destination", "Asset Accessed"],
@@ -80,20 +90,28 @@ if inspect_id and inspect_id in df['access_id'].values:
 
     # AI Verdict
     st.subheader("🤖 AI Copilot Verdict")
-    justifications = ", ".join([j.split(' (+') for j in alert.get('justification', [])])
-    ai_verdict = f"""
-    `{alert['username']}` significantly deviated from baseline behavior by exporting `{context.get('rowcount', 'data')}` records from `{alert.get('data_asset', 'the database')}` to `{context.get('destination', 'an unapproved destination')}`. 
     
-    The activity was flagged due to: **{justifications}**. 
-    
-    **Immediate SOC intervention is recommended.**
-    """
-    st.info(ai_verdict)
+    if GEMINI_AVAILABLE and is_gemini_configured():
+        with st.spinner("🔄 Generating AI analysis..."):
+            ai_verdict = generate_investigation_narrative(alert.to_dict())
+            st.success(ai_verdict)
+    else:
+        # Fallback to hardcoded verdict
+        justifications = ", ".join([j.split(' (+')[0].strip() for j in alert.get('justification', [])])
+        ai_verdict = f"""
+        `{alert['username']}` significantly deviated from baseline behavior by accessing `{alert.get('data_asset', 'the database')}`
+        ({context.get('rowcount', 'data')} records) to `{context.get('destination', 'an unapproved destination')}`.
 
-    col_close, _ = st.columns()
+        Risk factors: **{justifications}**.
+
+        **Immediate SOC intervention recommended.**
+        """
+        st.info(ai_verdict)
+
+    col_close, _ = st.columns([1, 4])
     with col_close:
         if st.button("✖️ Close Investigation"):
-            st.session_state.pop('selected_access_id')
+            st.session_state.pop('selected_access_id', None)
             st.rerun()
 
 st.markdown("---")
@@ -107,7 +125,7 @@ with col_search:
 with col_dept:
     search_department = st.selectbox(
         "Filter by Department",
-        ["All"] + list(df['department'].dropna().unique())
+        ["All"] + sorted(df['department'].dropna().unique())
     )
 
 filtered_df = df.copy()

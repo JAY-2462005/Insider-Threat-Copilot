@@ -1,10 +1,11 @@
 import streamlit as st
-import os
-import sys
 
-# Add backend to path so we can import the detector
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'backend'))
-from detector import get_alerts_for_ui
+from data_service import (
+    clear_data_cache,
+    get_alerts_dataframe,
+    get_dataset_summary,
+    get_events_dataframe,
+)
 
 st.set_page_config(
     page_title="Insider Threat Copilot",
@@ -33,45 +34,47 @@ st.sidebar.title("🛡️ Insider Threat Copilot")
 st.sidebar.markdown("---")
 st.sidebar.markdown("### Configuration")
 
-# Initialize threshold in session state
 if "threshold" not in st.session_state:
     st.session_state["threshold"] = 70
 
-# Dynamic Threshold Slider
 new_threshold = st.sidebar.slider(
     "Risk Score Threshold", 
     0, 100, 
     st.session_state["threshold"], 5
 )
 
-# Data Paths
-logs_path = os.path.join(os.path.dirname(__file__), 'data', 'data_access_logs.csv')
-profiles_path = os.path.join(os.path.dirname(__file__), 'data', 'user_profiles.csv')
+if st.sidebar.button("Refresh Backend Data"):
+    clear_data_cache()
 
-# Load alerts ONLY if missing OR if the user changes the threshold slider
-if 'alerts' not in st.session_state or new_threshold != st.session_state["threshold"]:
-    st.session_state["threshold"] = new_threshold
-    try:
-        with st.spinner("Analyzing access logs & updating ML predictions..."):
-            st.session_state['alerts'] = get_alerts_for_ui(logs_path, profiles_path, new_threshold)
-    except Exception as e:
-        st.sidebar.error(f"Failed to load alerts: {e}")
-        st.session_state['alerts'] = []
+st.session_state["threshold"] = new_threshold
+
+try:
+    with st.spinner("Analyzing access logs & updating ML predictions..."):
+        events_df = get_events_dataframe()
+        alerts_df = get_alerts_dataframe(new_threshold)
+        summary = get_dataset_summary(new_threshold)
+except FileNotFoundError:
+    st.sidebar.error("Data files not found. Run backend/generate_ps4_data.py first.")
+    st.stop()
+except Exception as e:
+    st.sidebar.error(f"Failed to load backend data: {e}")
+    st.stop()
 
 # Main content - Home Page
 st.title("🛡️ Insider Threat Detection System")
 
-# Quick Stats & Top Incident (Immediate visual impact for judges)
-alerts = st.session_state.get("alerts", [])
-if alerts:
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Active Alerts", len(alerts))
-    col2.metric("Critical", len([a for a in alerts if a['severity'] == "CRITICAL"]))
-    col3.metric("High", len([a for a in alerts if a['severity'] == "HIGH"]))
-    col4.metric("Users Monitored", len(set(a['username'] for a in alerts)))
-    
-    # Top Incident Hook
-    top_alert = max(alerts, key=lambda x: x["risk_score"])
+if events_df.empty:
+    st.info("No backend events are available yet.")
+    st.stop()
+
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Events Scored", summary["events"])
+col2.metric("Active Alerts", summary["alerts"])
+col3.metric("Critical", summary["critical"])
+col4.metric("Users Monitored", summary["users"])
+
+if not alerts_df.empty:
+    top_alert = alerts_df.sort_values(by="risk_score", ascending=False).iloc[0]
     st.error(
         f"""
         ### 🚨 Top Incident
@@ -83,6 +86,15 @@ if alerts:
 else:
     st.info("✅ No alerts detected above the selected threshold.")
     st.markdown("---")
+
+st.subheader("Recent Backend-Scored Events")
+st.dataframe(
+    events_df[["timestamp", "username", "department", "data_asset", "destination", "risk_score", "severity"]]
+    .sort_values(by="timestamp", ascending=False)
+    .head(15),
+    use_container_width=True,
+    hide_index=True,
+)
 
 st.markdown("""
 Welcome to the **Insider Threat Copilot** - an AI-powered platform for detecting and investigating 

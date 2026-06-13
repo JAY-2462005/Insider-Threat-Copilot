@@ -3,6 +3,7 @@ import numpy as np
 from sklearn.ensemble import IsolationForest
 import json
 import os
+from pathlib import Path
 
 def load_and_merge_data(logs_path, profiles_path):
     """Loads CSVs and merges them on user_id safely."""
@@ -177,80 +178,109 @@ def train_and_predict(df):
 
     return df
 
-def get_alerts_for_ui(logs_path, profiles_path, threshold=70):
-    """Called by the UI to fetch highly explainable real-time alerts."""
+def classify_risk(score):
+    """Return the SOC severity and recommended actions for a risk score."""
+    if score >= 90:
+        return "CRITICAL", [
+            "Disable account immediately",
+            "Block export destination",
+            "Escalate to SOC",
+            "Review last 72 hours"
+        ]
+    if score >= 75:
+        return "HIGH", [
+            "Manager review",
+            "Investigate user activity",
+            "Monitor closely"
+        ]
+    if score >= 50:
+        return "MEDIUM", [
+            "Monitor activity",
+            "Verify business justification"
+        ]
+    return "LOW", [
+        "No immediate action"
+    ]
+
+
+def _json_safe(value):
+    """Convert pandas/numpy values into Streamlit-friendly primitives."""
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, pd.Timestamp):
+        return str(value)
+    if isinstance(value, np.integer):
+        return int(value)
+    if isinstance(value, np.floating):
+        return float(value)
+    if isinstance(value, np.bool_):
+        return bool(value)
+    try:
+        if pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    return value
+
+
+def _format_ui_event(row):
+    reasons = []
+    breakdown = row.get('score_breakdown', {})
+
+    if isinstance(breakdown, dict):
+        for reason, points in breakdown.items():
+            reasons.append(f"{reason} (+{points})")
+
+    ml_contrib = round(float(row.get('ml_score', 0)) * 1.2, 1)
+    if ml_contrib > 5:
+        reasons.append(f"Behavioral ML Anomaly Detected (+{ml_contrib})")
+
+    if row.get('is_expected_seasonality') == 1 and row.get('destination_risk', 0) <= 2:
+        reasons.append("Expected Seasonality Suppression (-50% Penalty)")
+
+    score = float(row.get('risk_score', 0))
+    severity, actions = classify_risk(score)
+    raw_context = {str(k): _json_safe(v) for k, v in row.to_dict().items()}
+
+    return {
+        "access_id": str(row.get('access_id', 'UNKNOWN')),
+        "timestamp": str(row.get('timestamp', 'UNKNOWN')),
+        "username": str(row.get('username', 'UNKNOWN')),
+        "department": str(row.get('department', 'UNKNOWN')),
+        "data_asset": str(row.get('data_asset', 'UNKNOWN')),
+        "risk_score": round(score, 1),
+        "severity": severity,
+        "justification": reasons,
+        "recommended_actions": actions,
+        "rowcount": _json_safe(row.get('rowcount', 0)),
+        "destination": str(row.get('destination', 'UNKNOWN')),
+        "query_type": str(row.get('query_type', 'UNKNOWN')),
+        "raw_context": raw_context
+    }
+
+
+def get_scored_events_for_ui(logs_path, profiles_path):
+    """Called by the UI to fetch every backend-scored access event."""
     df = load_and_merge_data(logs_path, profiles_path)
     df = feature_engineering(df)
     df = train_and_predict(df)
-    
-    alerts_df = df[df['risk_score'] >= threshold].copy()
-    alerts_df = alerts_df.sort_values(by='risk_score', ascending=False)
-    
-    alerts_list = []
-    for _, row in alerts_df.iterrows():
-        
-        reasons = []
-        breakdown = row['score_breakdown']
-        
-        for reason, points in breakdown.items():
-            reasons.append(f"{reason} (+{points})")
-            
-        ml_contrib = round(row['ml_score'] * 1.2, 1)
-        if ml_contrib > 5:
-            reasons.append(f"Behavioral ML Anomaly Detected (+{ml_contrib})")
-            
-        if row['is_expected_seasonality'] == 1 and row['destination_risk'] <= 2:
-            reasons.append("Expected Seasonality Suppression (-50% Penalty)")
+    df = df.sort_values(by='risk_score', ascending=False)
+    return [_format_ui_event(row) for _, row in df.iterrows()]
 
-        score = row['risk_score']
-        actions = []
-        
-        if score >= 90:
-            severity = "CRITICAL"
-            actions = [
-                "Disable account immediately",
-                "Block export destination",
-                "Escalate to SOC",
-                "Review last 72 hours"
-            ]
-        elif score >= 75:
-            severity = "HIGH"
-            actions = [
-                "Manager review",
-                "Investigate user activity",
-                "Monitor closely"
-            ]
-        elif score >= 50:
-            severity = "MEDIUM"
-            actions = [
-                "Monitor activity",
-                "Verify business justification"
-            ]
-        else:
-            severity = "LOW"
-            actions = [
-                "No immediate action"
-            ]
 
-        alert = {
-            "access_id": str(row.get('access_id', 'UNKNOWN')),
-            "timestamp": str(row['timestamp']),
-            "username": str(row.get('username', 'UNKNOWN')),
-            "department": str(row.get('department', 'UNKNOWN')),
-            "data_asset": str(row.get('data_asset', 'UNKNOWN')),
-            "risk_score": round(score, 1),
-            "severity": severity,
-            "justification": reasons,
-            "recommended_actions": actions,
-            "raw_context": row.fillna("").to_dict()
-        }
-        alerts_list.append(alert)
-        
-    return alerts_list
+def get_alerts_for_ui(logs_path, profiles_path, threshold=70):
+    """Called by the UI to fetch highly explainable alerts over the threshold."""
+    return [
+        event for event in get_scored_events_for_ui(logs_path, profiles_path)
+        if event['risk_score'] >= threshold
+    ]
 
 if __name__ == "__main__":
-    logs = "../data/data_access_logs.csv"
-    profs = "../data/user_profiles.csv"
+    project_root = Path(__file__).resolve().parents[1]
+    logs = project_root / "data" / "data_access_logs.csv"
+    profs = project_root / "data" / "user_profiles.csv"
     
     if os.path.exists(logs) and os.path.exists(profs):
         alerts = get_alerts_for_ui(logs, profs, threshold=70)
