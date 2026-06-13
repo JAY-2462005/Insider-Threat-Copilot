@@ -25,6 +25,7 @@ from detector import (  # noqa: E402
 EVENT_COLUMNS = [
     "access_id",
     "timestamp",
+    "user_id",
     "username",
     "department",
     "data_asset",
@@ -38,6 +39,9 @@ EVENT_COLUMNS = [
     "raw_context",
     "chatops_triggered",
     "chatops_message",
+    "pre_breach_score",
+    "pre_breach_level",
+    "flight_risk_reasons",
 ]
 
 
@@ -104,11 +108,37 @@ def get_alerts(threshold=None):
 
 
 def get_events_dataframe():
-    return pd.DataFrame(get_scored_events(), columns=EVENT_COLUMNS)
+    events = get_scored_events()
+    df = pd.DataFrame(events)
+    # Ensure all expected columns exist, fill with defaults if missing
+    for col in EVENT_COLUMNS:
+        if col not in df.columns:
+            if col in ['pre_breach_score']:
+                df[col] = 0
+            elif col in ['pre_breach_level']:
+                df[col] = 'LOW'
+            elif col in ['flight_risk_reasons']:
+                df[col] = [[] for _ in range(len(df))]
+            else:
+                df[col] = ''
+    return df[EVENT_COLUMNS]
 
 
 def get_alerts_dataframe(threshold=None):
-    return pd.DataFrame(get_alerts(threshold), columns=EVENT_COLUMNS)
+    alerts = get_alerts(threshold)
+    df = pd.DataFrame(alerts)
+    # Ensure all expected columns exist, fill with defaults if missing
+    for col in EVENT_COLUMNS:
+        if col not in df.columns:
+            if col in ['pre_breach_score']:
+                df[col] = 0
+            elif col in ['pre_breach_level']:
+                df[col] = 'LOW'
+            elif col in ['flight_risk_reasons']:
+                df[col] = [[] for _ in range(len(df))]
+            else:
+                df[col] = ''
+    return df[EVENT_COLUMNS]
 
 
 def get_dataset_summary(threshold=None):
