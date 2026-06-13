@@ -1,4 +1,101 @@
 user_id,username,department,job_title,tenure_months,approved_data_assets,avg_queries_per_day,typical_access_hours,avg_rowcount_per_query,high_risk_flag,equipment,access_tier
-USR-0245,alice.smith,Finance,Senior Analyst,48,GL_Ledger|AR_System,12.5,9-17,450,False,company_laptop,senior
-USR-1847,bob.jones,IT,System Admin,3,ALL,25.0,8-18,1000,True,contractor_machine,admin
-USR-0003,diana.intern,Marketing,Intern,1,Public_Campaigns,5.0,10-16,50,False,company_laptop,junior
+USR-0001,user.0001,Sales,Intern,32,Public_Data,8.2,9-17,45,False,company_laptop,junior
+USR-0002,user.0002,Sales,Sales Specialist,12,Sales_DB|Shared_Drive,18.5,8-18,608,True,company_laptop,senior
+USR-0003,user.0003,Finance,Intern,78,Public_Data,2.7,9-17,74,False,company_laptop,junior
+USR-0004,user.0004,Sales,Sales Specialist,29,Sales_DB|Shared_Drive,14.6,8-18,479,False,company_laptop,senior
+USR-0005,user.0005,Finance,Finance Specialist,90,Finance_DB|Shared_Drive,13.8,8-18,213,False,company_laptop,senior
+USR-0006,user.0006,IT,IT Specialist,14,IT_DB|Shared_Drive,4.6,8-18,394,False,contractor_machine,contractor
+USR-0007,user.0007,Engineering,Engineering Specialist,6,Engineering_DB|Shared_Drive,22.4,8-18,876,False,company_laptop,standard
+USR-0008,user.0008,HR,Intern,107,Public_Data,19.6,9-17,47,False,company_laptop,junior
+USR-0009,user.0009,Engineering,Engineering Specialist,9,Engineering_DB|Shared_Drive,3.3,8-18,771,False,company_laptop,standard
+USR-0010,user.0010,Engineering,Engineering Specialist,30,Engineering_DB|Shared_Drive,26.3,8-18,925,False,contractor_machine,contractor
+USR-0011,user.0011,HR,HR Specialist,21,HR_DB|Shared_Drive,12.4,8-18,423,False,company_laptop,standard
+USR-0012,user.0012,Engineering,Engineering Specialist,83,Engineering_DB|Shared_Drive,4.0,8-18,749,False,company_laptop,senior
+USR-0013,user.0013,Marketing,Marketing Specialist,60,Marketing_DB|Shared_Drive,12.6,8-18,217,False,company_laptop,senior
+USR-0014,user.0014,Sales,Sales Specialist,88,Sales_DB|Shared_Drive,11.1,8-18,274,False,company_laptop,senior
+USR-0015,user.0015,Finance,Intern,104,Public_Data,10.8,9-17,14,False,company_laptop,junior
+USR-0016,user.0016,IT,VP of IT,113,ALL,22.1,8-20,390,False,company_laptop,executive
+USR-0017,user.0017,HR,HR Specialist,83,HR_DB|Shared_Drive,14.8,8-18,986,False,company_laptop,standard
+USR-0018,user.0018,IT,IT Specialist,34,IT_DB|Shared_Drive,22.9,8-18,601,False,company_laptop,senior
+USR-0019,user.0019,Marketing,Marketing Specialist,18,Marketing_DB|Shared_Drive,16.3,8-18,274,False,company_laptop,standard
+USR-0020,user.0020,Finance,System Admin,81,ALL,6.5,0-24,1626,False,company_laptop,admin
+USR-0021,user.0021,Marketing,Intern,77,Public_Data,29.9,9-17,58,False,company_laptop,junior
+USR-0022,user.0022,Marketing,System Admin,88,ALL,22.2,0-24,1047,False,company_laptop,admin
+USR-0023,user.0023,Marketing,Marketing Specialist,83,Marketing_DB|Shared_Drive,11.5,8-18,837,False,company_laptop,senior
+USR-0024,user.0024,IT,IT Specialist,113,IT_DB|Shared_Drive,22.2,8-18,789,False,company_laptop,standard
+USR-0025,user.0025,IT,IT Specialist,112,IT_DB|Shared_Drive,19.5,8-18,158,False,company_laptop,standard
+USR-0026,user.0026,Marketing,Marketing Specialist,48,Marketing_DB|Shared_Drive,23.4,8-18,206,False,company_laptop,standard
+USR-0027,user.0027,Marketing,VP of Marketing,42,ALL,15.7,8-20,406,False,company_laptop,executive
+USR-0028,user.0028,Engineering,System Admin,104,ALL,10.6,0-24,4406,False,company_laptop,admin
+USR-0029,user.0029,Marketing,Marketing Specialist,94,Marketing_DB|Shared_Drive,15.6,8-18,137,False,contractor_machine,contractor
+USR-0030,user.0030,Marketing,Marketing Specialist,85,Marketing_DB|Shared_Drive,15.3,8-18,181,False,company_laptop,senior
+USR-0031,user.0031,Engineering,Engineering Specialist,55,Engineering_DB|Shared_Drive,29.0,8-18,671,False,company_laptop,standard
+USR-0032,user.0032,Sales,Sales Specialist,40,Sales_DB|Shared_Drive,13.2,8-18,780,False,company_laptop,senior
+USR-0033,user.0033,Engineering,Engineering Specialist,58,Engineering_DB|Shared_Drive,5.4,8-18,579,False,company_laptop,standard
+USR-0034,user.0034,Engineering,Intern,30,Public_Data,18.5,9-17,80,True,company_laptop,junior
+USR-0035,user.0035,Sales,Sales Specialist,9,Sales_DB|Shared_Drive,27.4,8-18,284,False,company_laptop,standard
+USR-0036,user.0036,Finance,Finance Specialist,86,Finance_DB|Shared_Drive,15.6,8-18,335,False,company_laptop,standard
+USR-0037,user.0037,Sales,Sales Specialist,74,Sales_DB|Shared_Drive,15.2,8-18,634,False,contractor_machine,contractor
+USR-0038,user.0038,HR,Intern,85,Public_Data,14.1,9-17,22,False,company_laptop,junior
+USR-0039,user.0039,HR,System Admin,87,ALL,20.3,0-24,1221,False,company_laptop,admin
+USR-0040,user.0040,Finance,Finance Specialist,103,Finance_DB|Shared_Drive,26.1,8-18,397,False,company_laptop,standard
+USR-0041,user.0041,IT,IT Specialist,55,IT_DB|Shared_Drive,7.1,8-18,193,False,company_laptop,standard
+USR-0042,user.0042,Finance,Finance Specialist,110,Finance_DB|Shared_Drive,17.4,8-18,932,False,company_laptop,standard
+USR-0043,user.0043,Marketing,System Admin,12,ALL,27.9,0-24,4969,False,company_laptop,admin
+USR-0044,user.0044,IT,IT Specialist,28,IT_DB|Shared_Drive,26.2,8-18,542,False,company_laptop,standard
+USR-0045,user.0045,IT,IT Specialist,34,IT_DB|Shared_Drive,27.9,8-18,449,False,company_laptop,standard
+USR-0046,user.0046,Engineering,Engineering Specialist,101,Engineering_DB|Shared_Drive,17.6,8-18,798,False,company_laptop,standard
+USR-0047,user.0047,IT,Intern,8,Public_Data,18.2,9-17,37,False,company_laptop,junior
+USR-0048,user.0048,Sales,Sales Specialist,75,Sales_DB|Shared_Drive,15.4,8-18,101,False,company_laptop,standard
+USR-0049,user.0049,Marketing,Intern,11,Public_Data,25.8,9-17,75,False,company_laptop,junior
+USR-0050,user.0050,Finance,Finance Specialist,52,Finance_DB|Shared_Drive,5.4,8-18,290,False,company_laptop,senior
+USR-0051,user.0051,IT,IT Specialist,80,IT_DB|Shared_Drive,4.3,8-18,90,False,company_laptop,standard
+USR-0052,user.0052,Marketing,Marketing Specialist,27,Marketing_DB|Shared_Drive,20.8,8-18,317,False,company_laptop,standard
+USR-0053,user.0053,Engineering,Engineering Specialist,83,Engineering_DB|Shared_Drive,10.4,8-18,737,False,company_laptop,standard
+USR-0054,user.0054,Finance,Intern,73,Public_Data,29.9,9-17,89,False,company_laptop,junior
+USR-0055,user.0055,IT,IT Specialist,120,IT_DB|Shared_Drive,11.8,8-18,185,False,company_laptop,standard
+USR-0056,user.0056,IT,IT Specialist,57,IT_DB|Shared_Drive,25.3,8-18,211,False,company_laptop,standard
+USR-0057,user.0057,Marketing,Marketing Specialist,84,Marketing_DB|Shared_Drive,16.8,8-18,876,False,contractor_machine,contractor
+USR-0058,user.0058,Marketing,Marketing Specialist,14,Marketing_DB|Shared_Drive,28.3,8-18,729,False,company_laptop,standard
+USR-0059,user.0059,Finance,VP of Finance,71,ALL,6.4,8-20,480,False,company_laptop,executive
+USR-0060,user.0060,IT,IT Specialist,88,IT_DB|Shared_Drive,19.8,8-18,258,False,company_laptop,senior
+USR-0061,user.0061,HR,HR Specialist,109,HR_DB|Shared_Drive,3.4,8-18,979,False,company_laptop,standard
+USR-0062,user.0062,Engineering,Intern,99,Public_Data,5.7,9-17,52,False,company_laptop,junior
+USR-0063,user.0063,IT,IT Specialist,91,IT_DB|Shared_Drive,14.0,8-18,614,True,company_laptop,senior
+USR-0064,user.0064,Finance,Finance Specialist,116,Finance_DB|Shared_Drive,6.2,8-18,757,True,contractor_machine,contractor
+USR-0065,user.0065,Engineering,Engineering Specialist,56,Engineering_DB|Shared_Drive,5.6,8-18,201,False,company_laptop,standard
+USR-0066,user.0066,Finance,VP of Finance,88,ALL,9.0,8-20,207,False,company_laptop,executive
+USR-0067,user.0067,Marketing,VP of Marketing,80,ALL,23.0,8-20,308,False,company_laptop,executive
+USR-0068,user.0068,IT,System Admin,103,ALL,24.7,0-24,4998,False,company_laptop,admin
+USR-0069,user.0069,Finance,Intern,101,Public_Data,28.1,9-17,52,False,company_laptop,junior
+USR-0070,user.0070,Sales,System Admin,21,ALL,24.0,0-24,2092,False,company_laptop,admin
+USR-0071,user.0071,Finance,System Admin,26,ALL,24.9,0-24,1911,False,company_laptop,admin
+USR-0072,user.0072,Engineering,System Admin,30,ALL,8.2,0-24,4568,False,company_laptop,admin
+USR-0073,user.0073,HR,HR Specialist,9,HR_DB|Shared_Drive,29.1,8-18,935,False,company_laptop,standard
+USR-0074,user.0074,Sales,Sales Specialist,108,Sales_DB|Shared_Drive,17.0,8-18,745,False,company_laptop,standard
+USR-0075,user.0075,Finance,System Admin,23,ALL,18.3,0-24,2069,False,company_laptop,admin
+USR-0076,user.0076,Finance,Intern,45,Public_Data,22.4,9-17,65,False,company_laptop,junior
+USR-0077,user.0077,Marketing,Marketing Specialist,50,Marketing_DB|Shared_Drive,27.2,8-18,168,False,contractor_machine,contractor
+USR-0078,user.0078,Finance,Finance Specialist,67,Finance_DB|Shared_Drive,27.9,8-18,51,False,company_laptop,senior
+USR-0079,user.0079,Sales,Sales Specialist,86,Sales_DB|Shared_Drive,7.5,8-18,804,False,contractor_machine,contractor
+USR-0080,user.0080,Sales,VP of Sales,41,ALL,20.6,8-20,419,False,company_laptop,executive
+USR-0081,user.0081,Engineering,Engineering Specialist,53,Engineering_DB|Shared_Drive,11.1,8-18,732,False,company_laptop,standard
+USR-0082,user.0082,Marketing,Intern,86,Public_Data,28.3,9-17,63,False,company_laptop,junior
+USR-0083,user.0083,IT,IT Specialist,52,IT_DB|Shared_Drive,17.3,8-18,358,True,company_laptop,standard
+USR-0084,user.0084,Engineering,Intern,78,Public_Data,20.3,9-17,84,False,company_laptop,junior
+USR-0085,user.0085,HR,HR Specialist,61,HR_DB|Shared_Drive,24.2,8-18,573,False,company_laptop,senior
+USR-0086,user.0086,Sales,Intern,37,Public_Data,16.4,9-17,20,False,company_laptop,junior
+USR-0087,user.0087,Engineering,Intern,87,Public_Data,10.7,9-17,40,False,company_laptop,junior
+USR-0088,user.0088,IT,Intern,61,Public_Data,19.1,9-17,41,False,company_laptop,junior
+USR-0089,user.0089,HR,HR Specialist,74,HR_DB|Shared_Drive,7.4,8-18,694,False,company_laptop,standard
+USR-0090,user.0090,HR,HR Specialist,84,HR_DB|Shared_Drive,21.3,8-18,201,False,company_laptop,standard
+USR-0091,user.0091,Finance,Finance Specialist,23,Finance_DB|Shared_Drive,24.5,8-18,274,False,company_laptop,senior
+USR-0092,user.0092,HR,Intern,118,Public_Data,25.8,9-17,41,False,company_laptop,junior
+USR-0093,user.0093,HR,HR Specialist,77,HR_DB|Shared_Drive,10.9,8-18,622,False,company_laptop,senior
+USR-0094,user.0094,HR,HR Specialist,115,HR_DB|Shared_Drive,16.1,8-18,786,False,company_laptop,standard
+USR-0095,user.0095,Marketing,Marketing Specialist,96,Marketing_DB|Shared_Drive,26.1,8-18,212,False,company_laptop,standard
+USR-0096,user.0096,IT,System Admin,99,ALL,23.8,0-24,2135,False,company_laptop,admin
+USR-0097,user.0097,IT,IT Specialist,92,IT_DB|Shared_Drive,10.0,8-18,129,False,company_laptop,standard
+USR-0098,user.0098,Engineering,VP of Engineering,18,ALL,6.2,8-20,141,False,company_laptop,executive
+USR-0099,user.0099,IT,IT Specialist,54,IT_DB|Shared_Drive,13.4,8-18,115,False,company_laptop,senior
+USR-0100,user.0100,HR,Intern,50,Public_Data,27.3,9-17,63,False,company_laptop,junior

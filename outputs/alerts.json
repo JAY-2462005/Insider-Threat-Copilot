@@ -1,0 +1,40 @@
+[
+  {
+    "access_id": "SAMPLE_001",
+    "timestamp": "2024-06-13 14:30:00",
+    "username": "john_doe",
+    "department": "Finance",
+    "data_asset": "Financial_Records_Q2",
+    "risk_score": 85.5,
+    "severity": "HIGH",
+    "justification": [
+      "High Sensitivity Data (+20)",
+      "Extreme Bulk Export (50000 records) (+25)",
+      "Off-hours Access (+15)"
+    ],
+    "recommended_actions": [
+      "Manager review",
+      "Investigate user activity",
+      "Monitor closely"
+    ],
+    "raw_context": {}
+  },
+  {
+    "access_id": "SAMPLE_002",
+    "timestamp": "2024-06-13 22:15:00",
+    "username": "jane_smith",
+    "department": "Engineering",
+    "data_asset": "Source_Code_Repository",
+    "risk_score": 45.2,
+    "severity": "MEDIUM",
+    "justification": [
+      "High Sensitivity Data (+15)",
+      "Moderate Volume Spike (5.5x typical) (+10)"
+    ],
+    "recommended_actions": [
+      "Monitor activity",
+      "Verify business justification"
+    ],
+    "raw_context": {}
+  }
+]
