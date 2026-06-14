@@ -5,6 +5,7 @@ import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from components.copilot import render_copilot_button
+from components.theme import inject_global_css, render_hero
 from data_service import get_alerts, get_alerts_dataframe, get_threshold, get_events_dataframe
 
 try:
@@ -15,9 +16,12 @@ try:
 except Exception:
     GEMINI_AVAILABLE = False
 
-st.set_page_config(page_title="Investigation Workbench", page_icon="🔍", layout="wide")
-
-st.title("🔍 Analyst Investigation Workbench")
+st.set_page_config(page_title="Investigation Workbench", layout="wide")
+inject_global_css()
+render_hero(
+    "Investigation Workbench",
+    "Deep-dive on flagged events — baseline vs observed behavior, flight risk, and analyst narratives.",
+)
 
 try:
     alerts = get_alerts(get_threshold())
@@ -33,7 +37,25 @@ if df.empty:
     st.info("No alerts available at the selected threshold.")
     st.stop()
 
-# --- 2. DEEP DIVE PANEL (Appears when an incident is selected) ---
+# --- 2. SEARCH & FILTER WORKSPACE ---
+st.subheader("Search & Filter Events")
+
+col_search, col_dept = st.columns(2)
+with col_search:
+    search_username = st.text_input("Search by Username", "")
+with col_dept:
+    search_department = st.selectbox(
+        "Filter by Department",
+        ["All"] + sorted(df['department'].dropna().unique())
+    )
+
+filtered_df = df.copy()
+if search_username:
+    filtered_df = filtered_df[filtered_df['username'].str.contains(search_username, case=False, na=False)]
+if search_department != "All":
+    filtered_df = filtered_df[filtered_df['department'] == search_department]
+
+# --- 3. DEEP DIVE PANEL (Appears when an incident is selected) ---
 inspect_id = st.session_state.get('selected_access_id')
 
 if inspect_id and inspect_id in df['access_id'].values:
@@ -41,7 +63,8 @@ if inspect_id and inspect_id in df['access_id'].values:
     alert = df[df['access_id'] == inspect_id].iloc[0]
     context = alert.get('raw_context', {})
     
-    st.error(f"### 🎯 Active Target: `{alert['username']}` | Risk Score: {alert['risk_score']} ({alert['severity']})")
+    # Enhanced alert header with better visual appeal
+    st.error(f"### 🎯 Active Investigation Target: `{alert['username']}` | Risk Score: {alert['risk_score']} ({alert['severity']})")
     
     col_left, col_right = st.columns(2)
     
@@ -160,25 +183,7 @@ if inspect_id and inspect_id in df['access_id'].values:
             st.session_state.pop('selected_access_id', None)
             st.rerun()
 
-st.markdown("---")
-
-# --- 3. SEARCH & FILTER WORKSPACE ---
-st.subheader("Search & Filter Events")
-
-col_search, col_dept = st.columns(2)
-with col_search:
-    search_username = st.text_input("Search by Username", "")
-with col_dept:
-    search_department = st.selectbox(
-        "Filter by Department",
-        ["All"] + sorted(df['department'].dropna().unique())
-    )
-
-filtered_df = df.copy()
-if search_username:
-    filtered_df = filtered_df[filtered_df['username'].str.contains(search_username, case=False, na=False)]
-if search_department != "All":
-    filtered_df = filtered_df[filtered_df['department'] == search_department]
+    st.markdown("---")
 
 st.subheader(f"High-Risk Activities ({len(filtered_df)} matches)")
 

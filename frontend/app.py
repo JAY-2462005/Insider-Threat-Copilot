@@ -1,13 +1,17 @@
 import streamlit as st
 
+from components.copilot import render_copilot_button
 from components.kill_switch import (
+    count_active_alerts,
+    count_active_critical,
+    filter_active_alerts,
     init_isolated_users,
     is_critical_alert,
     is_user_isolated,
     render_neutralized_block,
     render_revoke_button,
 )
-from components.copilot import render_copilot_button
+from components.theme import inject_global_css, render_hero
 from data_service import (
     clear_data_cache,
     get_alerts_dataframe,
@@ -16,41 +20,29 @@ from data_service import (
 )
 
 st.set_page_config(
-    page_title="Insider Threat Copilot",
+    page_title="TrustGuardian | Insider Threat Copilot",
     page_icon="🛡️",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
 init_isolated_users()
+inject_global_css()
 
-# Custom CSS
-st.markdown("""
-    <style>
-        .main {
-            padding: 2rem;
-        }
-        .metric-card {
-            background-color: #f0f2f6;
-            padding: 1.5rem;
-            border-radius: 0.5rem;
-            margin: 0.5rem 0;
-        }
-    </style>
-""", unsafe_allow_html=True)
-
-# Sidebar
-st.sidebar.title("🛡️ Insider Threat Copilot")
+st.sidebar.title("TrustGuardian")
+st.sidebar.caption("Insider Threat Detection Platform")
 st.sidebar.markdown("---")
-st.sidebar.markdown("### Configuration")
+st.sidebar.markdown("**Configuration**")
 
 if "threshold" not in st.session_state:
     st.session_state["threshold"] = 70
 
 new_threshold = st.sidebar.slider(
-    "Risk Score Threshold", 
-    0, 100, 
-    st.session_state["threshold"], 5
+    "Risk Score Threshold",
+    0,
+    100,
+    st.session_state["threshold"],
+    5,
 )
 
 if st.sidebar.button("Refresh Backend Data"):
@@ -59,7 +51,7 @@ if st.sidebar.button("Refresh Backend Data"):
 st.session_state["threshold"] = new_threshold
 
 try:
-    with st.spinner("Analyzing access logs & updating ML predictions..."):
+    with st.spinner("Scoring access logs..."):
         events_df = get_events_dataframe()
         alerts_df = get_alerts_dataframe(new_threshold)
         summary = get_dataset_summary(new_threshold)
@@ -70,103 +62,90 @@ except Exception as e:
     st.sidebar.error(f"Failed to load backend data: {e}")
     st.stop()
 
-# Main content - Home Page
-st.title("🛡️ Insider Threat Detection System")
+render_hero(
+    "TrustGuardian Insider Threat Copilot",
+    "AI-powered detection, investigation, and offline SOC copilot for suspicious insider activity — "
+    "built for security teams who need explainable alerts and fast response.",
+)
 
 if events_df.empty:
     st.info("No backend events are available yet.")
     st.stop()
 
+active_alerts = filter_active_alerts(alerts_df)
+
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Events Scored", summary["events"])
-col2.metric("Active Alerts", summary["alerts"])
-col3.metric("Critical", summary["critical"])
+col2.metric("Active Alerts", count_active_alerts(alerts_df))
+col3.metric("Critical (Active)", count_active_critical(alerts_df))
 col4.metric("Users Monitored", summary["users"])
 
-if not alerts_df.empty:
-    top_alert = alerts_df.sort_values(by="risk_score", ascending=False).iloc[0]
-    top_username = top_alert["username"]
+st.markdown("---")
 
-    if is_user_isolated(top_username):
-        render_neutralized_block(top_username)
+left, right = st.columns([1.2, 1])
+
+with left:
+    st.subheader("Highest Priority Incident")
+    if active_alerts.empty:
+        st.success("No active alerts above the selected threshold.")
     else:
+        top_alert = active_alerts.sort_values(by="risk_score", ascending=False).iloc[0]
+        top_username = top_alert["username"]
         st.error(
-            f"""
-            ### 🚨 Top Incident
-            **User:** `{top_username}` | **Department:** `{top_alert['department']}`  
-            **Severity:** **{top_alert['severity']}** | **Risk Score:** **{top_alert['risk_score']}**
-            """
+            f"**{top_alert['severity']}** — `{top_username}` ({top_alert['department']})  \n"
+            f"Risk **{top_alert['risk_score']}** · Asset `{top_alert.get('data_asset', 'Unknown')}` "
+            f"→ `{top_alert.get('destination', 'Unknown')}`"
         )
         if is_critical_alert(top_alert):
             render_revoke_button(top_alert, key_prefix="home_top_")
-        
-        # Add Data Detective button
-        if st.button("🤖 Ask Copilot: Why was this user flagged?", key="dashboard_detective"):
-            st.session_state["detective_prompt"] = f"Why was {top_username} flagged with risk score {top_alert['risk_score']}?"
+        if st.button("Ask Copilot about this incident", key="dashboard_detective"):
+            st.session_state["detective_prompt"] = (
+                f"Why was {top_username} flagged with risk score {top_alert['risk_score']}?"
+            )
             st.switch_page("pages/8_Security_Copilot.py")
 
-    st.markdown("---")
+with right:
+    st.subheader("Platform Capabilities")
+    st.markdown(
+        """
+        - **Detection** — Hybrid ML + rule engine with full score breakdown
+        - **Alerts Queue** — Severity-based triage with SOC actions
+        - **Investigation** — Baseline vs observed behavior analysis
+        - **Flight Risk** — Pre-breach watchlist before data exfiltration
+        - **Security Copilot** — Offline RAG + local Qwen analyst chat
+        - **Kill-Switch** — Simulated account isolation for critical threats
+        """
+    )
 
-    st.subheader("🔐 SOC Kill-Switch Queue")
-    st.caption("Simulated DLP / Azure AD integration — isolate compromised accounts without re-scoring events.")
-    for _, alert in alerts_df.sort_values(by="risk_score", ascending=False).head(10).iterrows():
-        username = alert["username"]
-        if is_user_isolated(username):
-            render_neutralized_block(username)
-            continue
+st.markdown("---")
+st.subheader("How It Works")
+flow_cols = st.columns(5)
+steps = [
+    ("Ingest", "CSV logs + user profiles"),
+    ("Engineer", "Behavioral features"),
+    ("Score", "ML + policy rules"),
+    ("Alert", "Explainable severity"),
+    ("Respond", "Investigate & contain"),
+]
+for col, (title, desc) in zip(flow_cols, steps):
+    col.markdown(f"**{title}**")
+    col.caption(desc)
 
-        icon = "🔴" if alert["severity"] == "CRITICAL" else "🟠" if alert["severity"] == "HIGH" else "🟡"
-        with st.container(border=True):
-            st.markdown(
-                f"{icon} **[{alert['severity']}]** `{alert['timestamp']}` — "
-                f"**{username}** ({alert['department']}) | Risk: **{alert['risk_score']}**"
-            )
-            st.markdown(f"Asset: `{alert.get('data_asset', 'Unknown')}` → `{alert.get('destination', 'Unknown')}`")
-            if is_critical_alert(alert):
-                render_revoke_button(alert, key_prefix="home_")
-    st.markdown("---")
-else:
-    st.info("✅ No alerts detected above the selected threshold.")
-    st.markdown("---")
-
-st.subheader("Recent Backend-Scored Events")
+st.markdown("---")
+st.subheader("Recent Scored Events")
 st.dataframe(
-    events_df[["timestamp", "username", "department", "data_asset", "destination", "risk_score", "severity"]]
+    events_df[
+        ["timestamp", "username", "department", "data_asset", "destination", "risk_score", "severity"]
+    ]
     .sort_values(by="timestamp", ascending=False)
-    .head(15),
+    .head(12),
     use_container_width=True,
     hide_index=True,
 )
 
-st.markdown("""
-Welcome to the **Insider Threat Copilot** - an AI-powered platform for detecting and investigating 
-suspicious insider threats in real-time.
-
-### Key Features
-- 🔍 **Real-time Detection**: ML-powered anomaly detection with rule-based scoring
-- 📊 **Advanced Analytics**: Comprehensive data access patterns analysis
-- 🚨 **Smart Alerts**: Severity-based alert system with recommended actions
-- 🔎 **Investigation Tools**: Deep dive into user activities and behavioral patterns
-- 🎯 **Threat Simulation (ATO)**: Interactive K-Means peer-group clustering demo
-- 🔐 **Simulated Kill-Switch**: One-click account isolation via mock SOAR / Identity Provider
-- 🤖 **AI Summary**: Automated insights and threat intelligence
-- ✈️ **Flight Risk Radar**: Proactive pre-breach threat prediction
-- 🛡️ **Security Copilot**: AI SOC Analyst for threat investigation, alert explanation, and risk prediction
-
-### How it Works
-1. **Data Ingestion**: Processes user access logs and profiles
-2. **Feature Engineering**: Extracts behavioral and contextual features
-3. **Hybrid Scoring**: Combines ML anomaly detection with rule-based logic
-4. **Risk Assessment**: Generates explainable risk scores with actionable insights
-5. **Alert Generation**: Creates severity-based alerts for SOC response
-
-👈 **Navigate using the sidebar to explore the system.**
-""")
-
-# Render context-aware Copilot button
 st.markdown("---")
 render_copilot_button(
-    "Ask Copilot: Explain today's critical incidents",
-    "Show me all critical incidents",
+    "Open Security Copilot",
+    "Summarize this week's critical insider threat incidents",
     key="home_copilot_btn",
 )
