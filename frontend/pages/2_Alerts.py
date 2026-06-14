@@ -11,7 +11,8 @@ from components.kill_switch import (
     render_neutralized_block,
     render_revoke_button,
 )
-from data_service import get_alerts_dataframe, get_threshold
+from components.copilot import render_copilot_button
+from data_service import get_alerts_dataframe, get_threshold, get_events_dataframe
 
 init_isolated_users()
 
@@ -20,6 +21,7 @@ st.title("🚨 Full Threat Queue")
 
 try:
     df = get_alerts_dataframe(get_threshold())
+    events_df = get_events_dataframe()
 except FileNotFoundError:
     st.error("❌ Data files not found. Please run generate_ps4_data.py first.")
     st.stop()
@@ -159,6 +161,14 @@ for _, row in filtered_df.iterrows():
             st.switch_page("pages/3_Investigation.py")
         
         # 5. Data Detective Integration
-        if st.button(f"🤖 Investigate with Data Detective", key=f"detective_{row['access_id']}"):
-            st.session_state["detective_prompt"] = f"Explain alert {row['access_id']} for user {username} with risk score {row['risk_score']} and severity {row['severity']}"
-            st.switch_page("pages/7_Data_Detective.py")
+        if st.button(f"🤖 Ask Copilot: Why was {username} flagged?", key=f"detective_{row['access_id']}"):
+            st.session_state["detective_prompt"] = f"Why was {username} flagged with risk score {row['risk_score']}?"
+            st.switch_page("pages/8_Security_Copilot.py")
+
+# Render context-aware Copilot button
+st.markdown("---")
+render_copilot_button(
+    "Ask Copilot: Show all critical alerts",
+    "Show me all critical incidents",
+    key="alerts_copilot_btn",
+)
