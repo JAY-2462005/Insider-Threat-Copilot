@@ -3,7 +3,17 @@ import os
 import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from components.kill_switch import (
+    count_active_critical,
+    init_isolated_users,
+    is_critical_alert,
+    is_user_isolated,
+    render_neutralized_block,
+    render_revoke_button,
+)
 from data_service import get_alerts_dataframe, get_threshold
+
+init_isolated_users()
 
 st.set_page_config(page_title="Alerts Queue", page_icon="🚨", layout="wide")
 st.title("🚨 Full Threat Queue")
@@ -52,20 +62,30 @@ if filtered_df.empty:
 else:
     stat1, stat2, stat3 = st.columns(3)
     stat1.metric("Visible Alerts", len(filtered_df))
-    stat2.metric("Critical", len(filtered_df[filtered_df['severity'] == "CRITICAL"]))
+    stat2.metric("Critical", count_active_critical(filtered_df))
     stat3.metric("Avg Risk Score", f"{filtered_df['risk_score'].mean():.1f}")
 
 st.markdown("---")
 
 # --- Expandable Rows ---
 for _, row in filtered_df.iterrows():
+    username = row['username']
+
+    if is_user_isolated(username):
+        render_neutralized_block(username)
+        continue
+
     # Color-code the severity icon
     icon = "🔴" if row['severity'] == "CRITICAL" else "🟠" if row['severity'] == "HIGH" else "🟡"
     
     # 1. Severity Badge & Professional Title
-    expander_title = f"{icon} [{row['severity']}] {row['timestamp']} | {row['username']} ({row['department']}) | Risk: {row['risk_score']}"
+    expander_title = f"{icon} [{row['severity']}] {row['timestamp']} | {username} ({row['department']}) | Risk: {row['risk_score']}"
     
     with st.expander(expander_title):
+        if is_critical_alert(row):
+            render_revoke_button(row, key_prefix="queue_")
+            st.markdown("---")
+
         # 2 & 3. Data Asset and Timestamp Cards
         st.markdown(f"**Data Asset:** `{row.get('data_asset', 'Unknown')}` &nbsp; | &nbsp; **Incident Time:** `{row['timestamp']}`")
         st.markdown("---")
