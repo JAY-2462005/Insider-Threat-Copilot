@@ -20,6 +20,7 @@ class Intent(Enum):
     EMPLOYEE_PROFILE = "employee_profile"
     ALERT_EXPLANATION = "alert_explanation"
     FLIGHT_RISK = "flight_risk"
+    SECURITY_ADVISORY = "security_advisory"
     OFF_TOPIC = "off_topic"
 
 
@@ -27,11 +28,28 @@ class Intent(Enum):
 _USERNAME_RE = re.compile(r'user[.\s_-]?(\d{4})', re.IGNORECASE)
 
 _THREAT_KEYWORDS = [
-    'show', 'incidents', 'usb', 'pii', 'critical', 'high', 'restricted',
-    'exported', 'accessed', 'off-hours', 'off hours', 'weekend', 'contractor',
-    'external', 'email', 'cloud', 'bulk', 'export', 'destination',
-    'department', 'data', 'events', 'activities', 'queries', 'records',
-    'payroll', 'source_code', 'customer', 'sensitive', 'medium',
+    'show', 'list', 'find', 'get', 'display', 'incidents', 'usb', 'pii',
+    'critical', 'high', 'restricted', 'exported', 'accessed', 'off-hours',
+    'off hours', 'weekend', 'contractor', 'external', 'email', 'cloud',
+    'bulk', 'export', 'destination', 'department', 'data', 'events',
+    'activities', 'queries', 'records', 'payroll', 'source_code', 'customer',
+    'sensitive', 'medium', 'low', 'flagged', 'risky', 'suspicious',
+    'threat', 'threats', 'anomaly', 'anomalies', 'person', 'persons',
+    'users', 'who', 'which',
+]
+
+_ADVISORY_KEYWORDS = [
+    'what should', 'what do i do', 'what needs to be done', 'what to do',
+    'consequence', 'consequences', 'impact', 'procedure', 'protocol',
+    'best practice', 'policy', 'policies', 'steps', 'action plan',
+    'how to respond', 'how to handle', 'how should', 'playbook',
+    'remediation', 'mitigation', 'response plan', 'escalat',
+    'what happens', 'what are the', 'legal', 'compliance', 'gdpr',
+    'hipaa', 'soc', 'nist', 'iso', 'framework', 'how does', 'how do',
+    'can you explain', 'what is insider', 'what is a threat',
+    'recommendations', 'advise', 'advice', 'suggest', 'guideline',
+    'if a user is flagged', 'when someone is flagged', 'if flagged',
+    'dlp', 'siem', 'soar', 'zero trust', 'insider threat',
 ]
 
 _EXPLAIN_KEYWORDS = [
@@ -76,11 +94,15 @@ def classify_intent(question: str) -> Intent:
     if any(kw in q for kw in _FLIGHT_KEYWORDS):
         return Intent.FLIGHT_RISK
 
-    # 5. Threat Investigation — broadest category
+    # 5. Security Advisory — procedural / "what to do" questions
+    if any(kw in q for kw in _ADVISORY_KEYWORDS):
+        return Intent.SECURITY_ADVISORY
+
+    # 6. Threat Investigation — broadest category
     if any(kw in q for kw in _THREAT_KEYWORDS):
         return Intent.THREAT_INVESTIGATION
 
-    # 6. Off-topic
+    # 7. Off-topic
     return Intent.OFF_TOPIC
 
 
@@ -144,6 +166,12 @@ def investigate_threats(question: str, df: pd.DataFrame) -> Dict[str, Any]:
     elif 'high' in q and 'risk' not in q:
         mask &= df['risk_score'] >= 75
         filters_applied.append("severity: HIGH+ (risk_score >= 75)")
+    elif re.search(r'\bmedium\b', q):
+        mask &= (df['risk_score'] >= 50) & (df['risk_score'] < 75)
+        filters_applied.append("severity: MEDIUM (50 <= risk_score < 75)")
+    elif re.search(r'\blow\b', q) and 'below' not in q:
+        mask &= df['risk_score'] < 50
+        filters_applied.append("severity: LOW (risk_score < 50)")
 
     # --- Data sensitivity ---
     if 'restricted' in q:
@@ -635,6 +663,9 @@ def investigate(question: str, df: pd.DataFrame) -> Dict[str, Any]:
     elif intent == Intent.FLIGHT_RISK:
         return analyze_flight_risk(question, df)
 
+    elif intent == Intent.SECURITY_ADVISORY:
+        return advise_security(question, df)
+
     else:
         # OFF_TOPIC — reject gracefully
         return {
@@ -647,9 +678,172 @@ def investigate(question: str, df: pd.DataFrame) -> Dict[str, Any]:
                 "• 👤 **Profile employees** — \"Tell me about user.0058\"\n\n"
                 "• ❓ **Explain alerts** — \"Why was user.0058 flagged?\"\n\n"
                 "• ✈️ **Predict risks** — \"Who should I monitor next week?\"\n\n"
+                "• 📋 **SOC procedures** — \"What to do if a user is flagged?\"\n\n"
                 "Please ask a security-related question."
             ),
             'has_results': False,
             'evidence': [],
             'recommendations': [],
         }
+
+
+# ---------------------------------------------------------------------------
+# Specialist 5: Security Advisory (procedural / consequence questions)
+# ---------------------------------------------------------------------------
+
+_ADVISORY_RESPONSES = {
+    'flagged': {
+        'title': '🚨 What Happens When a User is Flagged?',
+        'summary': (
+            'When TrustGuardian flags a user, a multi-stage incident response '
+            'process is triggered based on the risk score and severity level.'
+        ),
+        'stages': [
+            {'phase': 'Phase 1: Automated Detection', 'icon': '🔍',
+             'actions': [
+                 'Hybrid ML + Rule engine computes risk score (0-100)',
+                 'Score breakdown identifies contributing factors',
+                 'Severity assigned: LOW / MEDIUM / HIGH / CRITICAL',
+                 'ChatOps message sent to user for self-verification',
+             ]},
+            {'phase': 'Phase 2: SOC Triage (0-15 min)', 'icon': '⚡',
+             'actions': [
+                 'SOC Tier-1 reviews alert in the Investigation Workbench',
+                 'Baseline vs. Observed behavior compared',
+                 'Business justification verified with the user',
+                 'False positive assessment performed',
+             ]},
+            {'phase': 'Phase 3: Investigation (15 min - 4 hrs)', 'icon': '🔎',
+             'actions': [
+                 'SOC Tier-2 performs deep-dive analysis',
+                 'Data access patterns reviewed over 30-day window',
+                 'Peer-group behavioral comparison conducted',
+                 'Manager and HR notified if threat confirmed',
+             ]},
+            {'phase': 'Phase 4: Containment & Response', 'icon': '🛡️',
+             'actions': [
+                 'Kill-switch: Account isolation via SOAR/IdP integration',
+                 'Access privileges revoked or downgraded',
+                 'DLP controls tightened for affected data assets',
+                 'Forensic evidence preserved for legal review',
+             ]},
+        ],
+    },
+    'consequence': {
+        'title': '⚖️ Consequences of Being Flagged',
+        'summary': (
+            'Consequences depend on severity, intent, and organizational policy. '
+            'TrustGuardian supports a graduated response model.'
+        ),
+        'stages': [
+            {'phase': 'LOW Risk (Score < 50)', 'icon': '🟢',
+             'actions': [
+                 'Logged for audit trail',
+                 'Routine monitoring continues',
+                 'No direct action against the user',
+             ]},
+            {'phase': 'MEDIUM Risk (Score 50-74)', 'icon': '🟡',
+             'actions': [
+                 'Manager notification sent',
+                 'User asked to verify business justification',
+                 'Enhanced monitoring enabled for 30 days',
+                 'Access review scheduled',
+             ]},
+            {'phase': 'HIGH Risk (Score 75-89)', 'icon': '🟠',
+             'actions': [
+                 'Formal investigation opened',
+                 'HR and Legal notified',
+                 'Access privileges restricted',
+                 'Behavioral interview conducted',
+                 'Potential performance review impact',
+             ]},
+            {'phase': 'CRITICAL Risk (Score 90-100)', 'icon': '🔴',
+             'actions': [
+                 'Immediate account suspension (Kill-Switch)',
+                 'Manager, HR, Legal, and CISO notified',
+                 'Forensic investigation initiated',
+                 'Potential termination if malicious intent confirmed',
+                 'Law enforcement referral if data breach confirmed',
+                 'Regulatory disclosure (GDPR/HIPAA) if PII involved',
+             ]},
+        ],
+    },
+    'best_practice': {
+        'title': '📋 Insider Threat Best Practices',
+        'summary': (
+            'Industry-standard SOC best practices for detecting and preventing '
+            'insider threats based on NIST SP 800-53 and MITRE ATT&CK frameworks.'
+        ),
+        'stages': [
+            {'phase': 'Prevention', 'icon': '🛡️',
+             'actions': [
+                 'Implement least-privilege access controls',
+                 'Regular access certification reviews',
+                 'Security awareness training for all employees',
+                 'DLP (Data Loss Prevention) policies on all endpoints',
+                 'Zero-Trust architecture with continuous verification',
+             ]},
+            {'phase': 'Detection', 'icon': '🔍',
+             'actions': [
+                 'UEBA (User Entity Behavior Analytics) monitoring',
+                 'ML-based anomaly detection on access patterns',
+                 'Baseline profiling per role/department',
+                 'Flight risk indicators from HR data integration',
+                 'Real-time SIEM correlation rules',
+             ]},
+            {'phase': 'Response', 'icon': '⚡',
+             'actions': [
+                 'Automated playbook execution via SOAR',
+                 'Kill-switch for immediate account isolation',
+                 'ChatOps for non-intrusive user verification',
+                 'Evidence preservation for forensics',
+                 'Post-incident review and policy updates',
+             ]},
+        ],
+    },
+}
+
+
+def advise_security(question: str, df: pd.DataFrame) -> Dict[str, Any]:
+    """Answer procedural and consequence questions about insider threats."""
+    q = question.lower()
+
+    # Pick the best matching advisory topic
+    if any(w in q for w in ['consequence', 'impact', 'what happens', 'penalty',
+                             'termination', 'legal', 'fired', 'action against']):
+        topic = 'consequence'
+    elif any(w in q for w in ['best practice', 'prevent', 'policy', 'framework',
+                               'nist', 'mitre', 'iso', 'guideline', 'zero trust',
+                               'dlp', 'siem', 'soar']):
+        topic = 'best_practice'
+    else:
+        topic = 'flagged'  # default: "what to do when flagged"
+
+    advisory = _ADVISORY_RESPONSES[topic]
+
+    # Build summary with current stats
+    total = len(df)
+    critical = len(df[df['risk_score'] >= 90]) if 'risk_score' in df.columns else 0
+    high = len(df[(df['risk_score'] >= 75) & (df['risk_score'] < 90)]) if 'risk_score' in df.columns else 0
+
+    summary = (
+        f"**{advisory['title']}**\n\n"
+        f"{advisory['summary']}\n\n"
+        f"*Currently in your data: {total} events scored, "
+        f"{critical} CRITICAL, {high} HIGH risk.*"
+    )
+
+    return {
+        'response_type': 'security_advisory',
+        'question': question,
+        'summary': summary,
+        'has_results': True,
+        'advisory_title': advisory['title'],
+        'stages': advisory['stages'],
+        'recommendations': [
+            '📖 Review your organization\'s Insider Threat Policy document',
+            '🔗 Cross-reference with NIST SP 800-53 controls (AC, AU, SI families)',
+            '📊 Use the Analytics page to identify trending threat patterns',
+            '✈️ Check Flight Risk Radar for proactive pre-breach indicators',
+        ],
+    }
