@@ -7,6 +7,7 @@ from components.kill_switch import (
     render_neutralized_block,
     render_revoke_button,
 )
+from components.copilot import render_copilot_button
 from data_service import (
     clear_data_cache,
     get_alerts_dataframe,
@@ -98,6 +99,11 @@ if not alerts_df.empty:
         )
         if is_critical_alert(top_alert):
             render_revoke_button(top_alert, key_prefix="home_top_")
+        
+        # Add Data Detective button
+        if st.button("🤖 Ask Copilot: Why was this user flagged?", key="dashboard_detective"):
+            st.session_state["detective_prompt"] = f"Why was {top_username} flagged with risk score {top_alert['risk_score']}?"
+            st.switch_page("pages/8_Security_Copilot.py")
 
     st.markdown("---")
 
@@ -144,6 +150,8 @@ suspicious insider threats in real-time.
 - 🎯 **Threat Simulation (ATO)**: Interactive K-Means peer-group clustering demo
 - 🔐 **Simulated Kill-Switch**: One-click account isolation via mock SOAR / Identity Provider
 - 🤖 **AI Summary**: Automated insights and threat intelligence
+- ✈️ **Flight Risk Radar**: Proactive pre-breach threat prediction
+- 🛡️ **Security Copilot**: AI SOC Analyst for threat investigation, alert explanation, and risk prediction
 
 ### How it Works
 1. **Data Ingestion**: Processes user access logs and profiles
@@ -154,3 +162,11 @@ suspicious insider threats in real-time.
 
 👈 **Navigate using the sidebar to explore the system.**
 """)
+
+# Render context-aware Copilot button
+st.markdown("---")
+render_copilot_button(
+    "Ask Copilot: Explain today's critical incidents",
+    "Show me all critical incidents",
+    key="home_copilot_btn",
+)

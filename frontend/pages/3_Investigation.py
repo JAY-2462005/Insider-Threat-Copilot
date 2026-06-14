@@ -4,6 +4,7 @@ import sys
 import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from components.copilot import render_copilot_button
 from data_service import get_alerts, get_alerts_dataframe, get_threshold, get_events_dataframe
 
 try:
@@ -199,6 +200,9 @@ if not filtered_df.empty:
                 if st.button("Investigate Incident", key=f"investigate_{row['access_id']}"):
                     st.session_state['selected_access_id'] = row['access_id']
                     st.rerun()
+                if st.button(f"🤖 Ask Copilot: Why was {row.get('username', 'this user')} flagged?", key=f"detective_{row['access_id']}"):
+                    st.session_state["detective_prompt"] = f"Why was {row.get('username', 'this user')} flagged with risk score {row['risk_score']}?"
+                    st.switch_page("pages/8_Security_Copilot.py")
 else:
     st.success("No high-risk activities found matching your filters.")
 
@@ -206,3 +210,11 @@ else:
 st.markdown("<br>", unsafe_allow_html=True)
 with st.expander("Explore Raw Dataset"):
     st.dataframe(filtered_df[['access_id', 'timestamp', 'username', 'department', 'data_asset', 'risk_score', 'severity']])
+
+# Render context-aware Copilot button
+st.markdown("---")
+render_copilot_button(
+    "Ask Copilot: Investigate flagged users",
+    "Show me all critical incidents",
+    key="investigation_copilot_btn",
+)
