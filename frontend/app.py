@@ -1,5 +1,12 @@
 import streamlit as st
 
+from components.kill_switch import (
+    init_isolated_users,
+    is_critical_alert,
+    is_user_isolated,
+    render_neutralized_block,
+    render_revoke_button,
+)
 from data_service import (
     clear_data_cache,
     get_alerts_dataframe,
@@ -13,6 +20,8 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+init_isolated_users()
 
 # Custom CSS
 st.markdown("""
@@ -75,13 +84,40 @@ col4.metric("Users Monitored", summary["users"])
 
 if not alerts_df.empty:
     top_alert = alerts_df.sort_values(by="risk_score", ascending=False).iloc[0]
-    st.error(
-        f"""
-        ### 🚨 Top Incident
-        **User:** `{top_alert['username']}` | **Department:** `{top_alert['department']}`  
-        **Severity:** **{top_alert['severity']}** | **Risk Score:** **{top_alert['risk_score']}**
-        """
-    )
+    top_username = top_alert["username"]
+
+    if is_user_isolated(top_username):
+        render_neutralized_block(top_username)
+    else:
+        st.error(
+            f"""
+            ### 🚨 Top Incident
+            **User:** `{top_username}` | **Department:** `{top_alert['department']}`  
+            **Severity:** **{top_alert['severity']}** | **Risk Score:** **{top_alert['risk_score']}**
+            """
+        )
+        if is_critical_alert(top_alert):
+            render_revoke_button(top_alert, key_prefix="home_top_")
+
+    st.markdown("---")
+
+    st.subheader("🔐 SOC Kill-Switch Queue")
+    st.caption("Simulated DLP / Azure AD integration — isolate compromised accounts without re-scoring events.")
+    for _, alert in alerts_df.sort_values(by="risk_score", ascending=False).head(10).iterrows():
+        username = alert["username"]
+        if is_user_isolated(username):
+            render_neutralized_block(username)
+            continue
+
+        icon = "🔴" if alert["severity"] == "CRITICAL" else "🟠" if alert["severity"] == "HIGH" else "🟡"
+        with st.container(border=True):
+            st.markdown(
+                f"{icon} **[{alert['severity']}]** `{alert['timestamp']}` — "
+                f"**{username}** ({alert['department']}) | Risk: **{alert['risk_score']}**"
+            )
+            st.markdown(f"Asset: `{alert.get('data_asset', 'Unknown')}` → `{alert.get('destination', 'Unknown')}`")
+            if is_critical_alert(alert):
+                render_revoke_button(alert, key_prefix="home_")
     st.markdown("---")
 else:
     st.info("✅ No alerts detected above the selected threshold.")
@@ -106,6 +142,7 @@ suspicious insider threats in real-time.
 - 🚨 **Smart Alerts**: Severity-based alert system with recommended actions
 - 🔎 **Investigation Tools**: Deep dive into user activities and behavioral patterns
 - 🎯 **Threat Simulation (ATO)**: Interactive K-Means peer-group clustering demo
+- 🔐 **Simulated Kill-Switch**: One-click account isolation via mock SOAR / Identity Provider
 - 🤖 **AI Summary**: Automated insights and threat intelligence
 
 ### How it Works

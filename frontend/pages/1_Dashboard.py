@@ -4,7 +4,17 @@ import os
 import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from components.kill_switch import (
+    count_active_critical,
+    init_isolated_users,
+    is_critical_alert,
+    is_user_isolated,
+    render_neutralized_block,
+    render_revoke_button,
+)
 from data_service import get_alerts_dataframe, get_events_dataframe, get_threshold
+
+init_isolated_users()
 
 st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
 st.title("📊 Executive Dashboard")
@@ -27,23 +37,52 @@ if events_df.empty:
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Backend Events Scored", len(events_df))
 col2.metric("Total Flagged Events", len(df))
-col3.metric("Critical Alerts", len(df[df['severity'] == 'CRITICAL']) if not df.empty else 0)
+col3.metric("Critical Alerts", count_active_critical(df))
 col4.metric("Avg Risk Score", f"{events_df['risk_score'].mean():.1f}")
 
 st.markdown("---")
 
-# --- TOP INCIDENT ---
+# --- TOP INCIDENT & KILL-SWITCH QUEUE ---
 if not df.empty:
     top_alert = df.sort_values(by='risk_score', ascending=False).iloc[0]
-    st.error(
-        f"""
-        ### 🚨 TOP INCIDENT
-        **User:** `{top_alert['username']}` | **Department:** `{top_alert['department']}`
-        **Severity:** **{top_alert['severity']}** | **Risk Score:** **{top_alert['risk_score']}**
-        """
-    )
+    top_username = top_alert['username']
+
+    if is_user_isolated(top_username):
+        render_neutralized_block(top_username)
+    else:
+        st.error(
+            f"""
+            ### 🚨 TOP INCIDENT
+            **User:** `{top_username}` | **Department:** `{top_alert['department']}`
+            **Severity:** **{top_alert['severity']}** | **Risk Score:** **{top_alert['risk_score']}**
+            """
+        )
+        if is_critical_alert(top_alert):
+            render_revoke_button(top_alert, key_prefix="dash_top_")
 else:
     st.success("✅ No active alerts above the selected threshold.")
+
+st.markdown("---")
+
+st.subheader("🔐 SOC Kill-Switch — Active Alerts")
+if df.empty:
+    st.info("No alerts to display.")
+else:
+    for _, alert in df.sort_values(by='risk_score', ascending=False).iterrows():
+        username = alert['username']
+        if is_user_isolated(username):
+            render_neutralized_block(username)
+            continue
+
+        icon = "🔴" if alert['severity'] == "CRITICAL" else "🟠" if alert['severity'] == "HIGH" else "🟡"
+        with st.container(border=True):
+            st.markdown(
+                f"{icon} **[{alert['severity']}]** `{alert['timestamp']}` | "
+                f"**{username}** ({alert['department']}) | Risk: **{alert['risk_score']}**"
+            )
+            st.markdown(f"**Asset:** `{alert.get('data_asset', 'Unknown')}` → **Destination:** `{alert.get('destination', 'Unknown')}`")
+            if is_critical_alert(alert):
+                render_revoke_button(alert, key_prefix="dash_")
 
 st.markdown("---")
 
