@@ -226,6 +226,11 @@ if top_risk_users:
             'Risk Score', 'Pre-Breach Score', 'Level'
         ]
         st.dataframe(activity_display, use_container_width=True, hide_index=True)
+        
+        st.markdown("---")
+        if st.button(f"🤖 Explain Why {selected_user} is High Flight Risk", key=f"flight_detective_{selected_user}"):
+            st.session_state["detective_prompt"] = f"Why is {selected_user} considered high flight risk with pre-breach score {latest_event.get('pre_breach_score', 0)} and level {latest_event.get('pre_breach_level', 'LOW')}?"
+            st.switch_page("pages/7_Data_Detective.py")
 else:
     st.info("No user data available for detailed analysis.")
 

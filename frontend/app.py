@@ -98,6 +98,11 @@ if not alerts_df.empty:
         )
         if is_critical_alert(top_alert):
             render_revoke_button(top_alert, key_prefix="home_top_")
+        
+        # Add Data Detective button
+        if st.button("🤖 Ask Data Detective about this incident", key="dashboard_detective"):
+            st.session_state["detective_prompt"] = f"Explain why {top_username} was flagged with risk score {top_alert['risk_score']} and severity {top_alert['severity']}"
+            st.switch_page("pages/7_Data_Detective.py")
 
     st.markdown("---")
 
@@ -144,6 +149,8 @@ suspicious insider threats in real-time.
 - 🎯 **Threat Simulation (ATO)**: Interactive K-Means peer-group clustering demo
 - 🔐 **Simulated Kill-Switch**: One-click account isolation via mock SOAR / Identity Provider
 - 🤖 **AI Summary**: Automated insights and threat intelligence
+- ✈️ **Flight Risk Radar**: Proactive pre-breach threat prediction
+- 🕵️ **Data Detective**: Natural language security investigation copilot
 
 ### How it Works
 1. **Data Ingestion**: Processes user access logs and profiles

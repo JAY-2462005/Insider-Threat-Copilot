@@ -199,6 +199,9 @@ if not filtered_df.empty:
                 if st.button("Investigate Incident", key=f"investigate_{row['access_id']}"):
                     st.session_state['selected_access_id'] = row['access_id']
                     st.rerun()
+                if st.button(f"🤖 Ask Follow-up", key=f"detective_{row['access_id']}"):
+                    st.session_state["detective_prompt"] = f"Tell me more about {row.get('username', 'this user')} and their activity with risk score {row['risk_score']}"
+                    st.switch_page("pages/7_Data_Detective.py")
 else:
     st.success("No high-risk activities found matching your filters.")
 

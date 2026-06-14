@@ -157,3 +157,8 @@ for _, row in filtered_df.iterrows():
             # Save the ID to session state so the Investigation page knows what to load
             st.session_state['selected_access_id'] = row['access_id']
             st.switch_page("pages/3_Investigation.py")
+        
+        # 5. Data Detective Integration
+        if st.button(f"🤖 Investigate with Data Detective", key=f"detective_{row['access_id']}"):
+            st.session_state["detective_prompt"] = f"Explain alert {row['access_id']} for user {username} with risk score {row['risk_score']} and severity {row['severity']}"
+            st.switch_page("pages/7_Data_Detective.py")
