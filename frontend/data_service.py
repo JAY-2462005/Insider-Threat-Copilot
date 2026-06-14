@@ -20,6 +20,7 @@ from detector import (  # noqa: E402
     get_clustering_simulation_data,
     get_scored_events_for_ui,
 )
+from flight_risk import get_flight_risk_summary  # noqa: E402
 
 
 EVENT_COLUMNS = [
@@ -65,11 +66,25 @@ def _load_ato_simulation(logs_path: str, profiles_path: str):
     return get_ato_simulation_context(profiles_path, logs_path)
 
 
+@st.cache_data(show_spinner=False)
+def _load_flight_risk_summary(logs_path: str, profiles_path: str):
+    events = get_scored_events_for_ui(logs_path, profiles_path)
+    df = pd.DataFrame(events)
+    if df.empty:
+        return {
+            'top_risk_users': [],
+            'enterprise_pressure_index': 0.0,
+            'risk_distribution': {}
+        }
+    return get_flight_risk_summary(df)
+
+
 def clear_data_cache():
     _load_scored_events.clear()
     _load_alerts.clear()
     _load_clustering_simulation.clear()
     _load_ato_simulation.clear()
+    _load_flight_risk_summary.clear()
     st.session_state.pop("alerts", None)
     st.session_state.pop("events", None)
 
@@ -80,6 +95,10 @@ def get_clustering_data():
 
 def get_ato_simulation():
     return _load_ato_simulation(str(LOGS_PATH), str(PROFILES_PATH))
+
+
+def get_flight_risk_data():
+    return _load_flight_risk_summary(str(LOGS_PATH), str(PROFILES_PATH))
 
 
 def get_data_paths():

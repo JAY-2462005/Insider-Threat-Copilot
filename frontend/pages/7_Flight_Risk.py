@@ -6,7 +6,7 @@ import os
 import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from data_service import get_events_dataframe, clear_data_cache
+from data_service import get_events_dataframe, clear_data_cache, get_flight_risk_data
 
 st.set_page_config(page_title="Flight Risk Radar", page_icon="✈️", layout="wide")
 
@@ -17,6 +17,7 @@ st.markdown("### Predict insider threats BEFORE they happen")
 clear_data_cache()
 
 try:
+    flight_risk_summary = get_flight_risk_data()
     df = get_events_dataframe()
 except FileNotFoundError:
     st.error("❌ Data files not found. Please run generate_ps4_data.py first.")
@@ -29,20 +30,12 @@ if df.empty:
     st.info("No backend events available for flight risk analysis.")
     st.stop()
 
-# Ensure flight risk columns exist
-if 'pre_breach_score' not in df.columns:
-    df['pre_breach_score'] = 0
-if 'pre_breach_level' not in df.columns:
-    df['pre_breach_level'] = 'LOW'
-if 'flight_risk_reasons' not in df.columns:
-    df['flight_risk_reasons'] = [[] for _ in range(len(df))]
-
 # --- ROW 1: ENTERPRISE PRESSURE INDEX & DISTRIBUTION ---
 col_gauge, col_dist = st.columns(2)
 
 with col_gauge:
     st.subheader("Enterprise Insider Pressure Index")
-    avg_pre_breach = df['pre_breach_score'].mean()
+    avg_pre_breach = flight_risk_summary.get('enterprise_pressure_index', 0)
     
     # Dynamic coloring based on pressure level
     gauge_color = "#ff4b4b" if avg_pre_breach >= 75 else "#ffa421" if avg_pre_breach >= 50 else "#00d46a"
@@ -74,46 +67,44 @@ with col_gauge:
 with col_dist:
     st.subheader("Flight Risk Level Distribution")
     
-    level_counts = df['pre_breach_level'].value_counts().reset_index()
-    level_counts.columns = ['Risk Level', 'Count']
+    risk_distribution = flight_risk_summary.get('risk_distribution', {})
     
-    # Define order and colors
-    level_order = ['LOW', 'WATCHLIST', 'ELEVATED', 'HIGH FLIGHT RISK']
-    level_colors = {'LOW': '#00d46a', 'WATCHLIST': '#ffa421', 'ELEVATED': '#ff8c00', 'HIGH FLIGHT RISK': '#ff4b4b'}
-    
-    level_counts = level_counts[level_counts['Risk Level'].isin(level_order)]
-    level_counts['Risk Level'] = pd.Categorical(level_counts['Risk Level'], categories=level_order, ordered=True)
-    level_counts = level_counts.sort_values('Risk Level')
-    
-    fig_dist = px.bar(
-        level_counts,
-        x='Risk Level',
-        y='Count',
-        color='Risk Level',
-        color_discrete_map=level_colors
-    )
-    fig_dist.update_layout(height=350, xaxis_title="Risk Level", yaxis_title="User Count")
-    st.plotly_chart(fig_dist, use_container_width=True)
+    if risk_distribution:
+        level_counts = pd.DataFrame(list(risk_distribution.items()), columns=['Risk Level', 'Count'])
+        
+        # Define order and colors
+        level_order = ['LOW', 'WATCHLIST', 'ELEVATED', 'HIGH FLIGHT RISK']
+        level_colors = {'LOW': '#00d46a', 'WATCHLIST': '#ffa421', 'ELEVATED': '#ff8c00', 'HIGH FLIGHT RISK': '#ff4b4b'}
+        
+        level_counts = level_counts[level_counts['Risk Level'].isin(level_order)]
+        level_counts['Risk Level'] = pd.Categorical(level_counts['Risk Level'], categories=level_order, ordered=True)
+        level_counts = level_counts.sort_values('Risk Level')
+        
+        fig_dist = px.bar(
+            level_counts,
+            x='Risk Level',
+            y='Count',
+            color='Risk Level',
+            color_discrete_map=level_colors
+        )
+        fig_dist.update_layout(height=350, xaxis_title="Risk Level", yaxis_title="User Count")
+        st.plotly_chart(fig_dist, use_container_width=True)
+    else:
+        st.info("No risk distribution data available.")
 
 st.markdown("---")
 
 # --- ROW 2: TOP 10 USERS LIKELY TO BREACH ---
 st.subheader("🎯 Top 10 Users Likely To Breach")
 
-# Get the highest pre_breach_score for each user
-user_risk = df.groupby(['user_id', 'username', 'department']).agg({
-    'pre_breach_score': 'max',
-    'pre_breach_level': lambda x: x.mode()[0] if len(x.mode()) > 0 else 'LOW',
-    'flight_risk_reasons': lambda x: x.iloc[0] if len(x) > 0 else []
-}).reset_index()
+top_risk_users = flight_risk_summary.get('top_risk_users', [])
 
-user_risk = user_risk.sort_values('pre_breach_score', ascending=False).head(10)
-
-if user_risk.empty:
+if not top_risk_users:
     st.info("No flight risk data available.")
 else:
     # Create display dataframe
-    display_df = user_risk[['username', 'department', 'pre_breach_score', 'pre_breach_level']].copy()
+    display_df = pd.DataFrame(top_risk_users)
+    display_df = display_df[['username', 'department', 'pre_breach_score', 'pre_breach_level']].copy()
     display_df.columns = ['User', 'Department', 'Score', 'Level']
     
     # Add color coding for levels
@@ -192,10 +183,11 @@ st.markdown("---")
 # --- ROW 4: DETAILED USER INVESTIGATION ---
 st.subheader("🔬 Detailed Flight Risk Investigation")
 
-if not user_risk.empty:
+if top_risk_users:
+    user_risk_df = pd.DataFrame(top_risk_users)
     selected_user = st.selectbox(
         "Select User for Detailed Analysis:",
-        user_risk.sort_values('pre_breach_score', ascending=False)['username'].tolist()
+        user_risk_df.sort_values('pre_breach_score', ascending=False)['username'].tolist()
     )
     
     user_data = df[df['username'] == selected_user].copy()
@@ -243,13 +235,13 @@ st.markdown("---")
 st.info("""
 💡 **How Flight Risk Prediction Works:**
 
-This radar analyzes behavior drift patterns to predict insider threats BEFORE they occur:
+This radar analyzes PRE-BREACH behavior drift patterns to predict insider threats BEFORE they occur:
 
-- **Login Time Drift:** Detects shifts from typical access hours
-- **Volume Drift:** Identifies unusual data export patterns
-- **Asset Drift:** Flags access to unapproved data assets
-- **Destination Drift:** Monitors risky data transfer destinations
-- **HR Risk Factors:** Incorporates tenure and HR risk flags
+- **Login Time Drift:** Detects shifts from typical access hours (early warning sign)
+- **Access Frequency Drift:** Identifies unusual query frequency patterns
+- **Asset Exploration Drift:** Flags exploration of unapproved data assets (without exfiltration)
+- **HR Risk Factors:** Incorporates tenure and HR flight-risk flags
+- **Note:** Actual breach indicators (volume spikes, risky destinations) are excluded to focus on early warning
 
 **Risk Levels:**
 - **0-30 (LOW):** Normal behavior patterns
