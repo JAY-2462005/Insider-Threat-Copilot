@@ -200,7 +200,7 @@ if st.session_state.ato_running:
         victim_profile["avg_queries_per_day"]
         + (compromised["avg_queries_per_day"] - victim_profile["avg_queries_per_day"]) * progress
     )
-    sim_df.loc[target_idx, "avg_rowcount_per_query"] = (
+    sim_df.loc[target_idx, "avg_rowcount_per_query"] = int(
         victim_profile["avg_rowcount_per_query"]
         + (compromised["avg_rowcount_per_query"] - victim_profile["avg_rowcount_per_query"]) * progress
     )

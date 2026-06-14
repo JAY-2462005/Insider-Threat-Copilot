@@ -4,11 +4,12 @@ import sys
 import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from data_service import get_alerts, get_alerts_dataframe, get_threshold
+from data_service import get_alerts, get_alerts_dataframe, get_threshold, get_events_dataframe
 
 try:
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend')))
     from llm_summary import generate_investigation_narrative, is_gemini_configured
+    from flight_risk import generate_flight_risk_n_summary
     GEMINI_AVAILABLE = True
 except Exception:
     GEMINI_AVAILABLE = False
@@ -68,6 +69,24 @@ if inspect_id and inspect_id in df['access_id'].values:
         })
         st.table(baseline_comparison)
         
+        # Flight Risk Assessment
+        st.subheader("✈️ Pre-Breach Flight Risk Assessment")
+        pre_breach_score = alert.get('pre_breach_score', 0)
+        pre_breach_level = alert.get('pre_breach_level', 'LOW')
+        flight_risk_reasons = alert.get('flight_risk_reasons', [])
+        
+        # Color-coded risk level
+        risk_color = "🟢" if pre_breach_level == 'LOW' else "🟡" if pre_breach_level == 'WATCHLIST' else "🟠" if pre_breach_level == 'ELEVATED' else "🔴"
+        
+        st.markdown(f"**Risk Level:** {risk_color} **{pre_breach_level}** (Score: {pre_breach_score}/100)")
+        
+        if flight_risk_reasons:
+            st.markdown("**Pre-Breach Indicators:**")
+            for reason in flight_risk_reasons:
+                st.markdown(f"• {reason}")
+        else:
+            st.info("No pre-breach indicators detected for this user.")
+        
         # Timeline
         st.subheader("🕒 Incident Timeline")
         st.markdown(f"""
@@ -107,6 +126,32 @@ if inspect_id and inspect_id in df['access_id'].values:
         **Immediate SOC intervention recommended.**
         """
         st.info(ai_verdict)
+    
+    # AI Flight Risk Narrative
+    st.subheader("✈️ AI Flight Risk Narrative")
+    flight_risk_data = {
+        'username': alert.get('username', 'Unknown'),
+        'department': alert.get('department', 'Unknown'),
+        'pre_breach_score': alert.get('pre_breach_score', 0),
+        'pre_breach_level': alert.get('pre_breach_level', 'LOW'),
+        'flight_risk_reasons': alert.get('flight_risk_reasons', [])
+    }
+    
+    if GEMINI_AVAILABLE and is_gemini_configured():
+        with st.spinner("🔄 Generating flight risk analysis..."):
+            try:
+                import google.generativeai as genai
+                llm_client = genai.GenerativeModel('gemini-pro')
+                flight_risk_narrative = generate_flight_risk_n_summary(flight_risk_data, llm_client)
+                st.info(flight_risk_narrative)
+            except Exception as e:
+                # Fallback to template-based narrative
+                flight_risk_narrative = generate_flight_risk_n_summary(flight_risk_data)
+                st.info(flight_risk_narrative)
+    else:
+        # Use template-based narrative
+        flight_risk_narrative = generate_flight_risk_n_summary(flight_risk_data)
+        st.info(flight_risk_narrative)
 
     col_close, _ = st.columns([1, 4])
     with col_close:

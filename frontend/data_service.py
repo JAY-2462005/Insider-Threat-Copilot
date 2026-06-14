@@ -20,11 +20,13 @@ from detector import (  # noqa: E402
     get_clustering_simulation_data,
     get_scored_events_for_ui,
 )
+from flight_risk import get_flight_risk_summary  # noqa: E402
 
 
 EVENT_COLUMNS = [
     "access_id",
     "timestamp",
+    "user_id",
     "username",
     "department",
     "data_asset",
@@ -38,6 +40,9 @@ EVENT_COLUMNS = [
     "raw_context",
     "chatops_triggered",
     "chatops_message",
+    "pre_breach_score",
+    "pre_breach_level",
+    "flight_risk_reasons",
 ]
 
 
@@ -61,11 +66,25 @@ def _load_ato_simulation(logs_path: str, profiles_path: str):
     return get_ato_simulation_context(profiles_path, logs_path)
 
 
+@st.cache_data(show_spinner=False)
+def _load_flight_risk_summary(logs_path: str, profiles_path: str):
+    events = get_scored_events_for_ui(logs_path, profiles_path)
+    df = pd.DataFrame(events)
+    if df.empty:
+        return {
+            'top_risk_users': [],
+            'enterprise_pressure_index': 0.0,
+            'risk_distribution': {}
+        }
+    return get_flight_risk_summary(df)
+
+
 def clear_data_cache():
     _load_scored_events.clear()
     _load_alerts.clear()
     _load_clustering_simulation.clear()
     _load_ato_simulation.clear()
+    _load_flight_risk_summary.clear()
     st.session_state.pop("alerts", None)
     st.session_state.pop("events", None)
 
@@ -76,6 +95,10 @@ def get_clustering_data():
 
 def get_ato_simulation():
     return _load_ato_simulation(str(LOGS_PATH), str(PROFILES_PATH))
+
+
+def get_flight_risk_data():
+    return _load_flight_risk_summary(str(LOGS_PATH), str(PROFILES_PATH))
 
 
 def get_data_paths():
@@ -104,11 +127,37 @@ def get_alerts(threshold=None):
 
 
 def get_events_dataframe():
-    return pd.DataFrame(get_scored_events(), columns=EVENT_COLUMNS)
+    events = get_scored_events()
+    df = pd.DataFrame(events)
+    # Ensure all expected columns exist, fill with defaults if missing
+    for col in EVENT_COLUMNS:
+        if col not in df.columns:
+            if col in ['pre_breach_score']:
+                df[col] = 0
+            elif col in ['pre_breach_level']:
+                df[col] = 'LOW'
+            elif col in ['flight_risk_reasons']:
+                df[col] = [[] for _ in range(len(df))]
+            else:
+                df[col] = ''
+    return df[EVENT_COLUMNS]
 
 
 def get_alerts_dataframe(threshold=None):
-    return pd.DataFrame(get_alerts(threshold), columns=EVENT_COLUMNS)
+    alerts = get_alerts(threshold)
+    df = pd.DataFrame(alerts)
+    # Ensure all expected columns exist, fill with defaults if missing
+    for col in EVENT_COLUMNS:
+        if col not in df.columns:
+            if col in ['pre_breach_score']:
+                df[col] = 0
+            elif col in ['pre_breach_level']:
+                df[col] = 'LOW'
+            elif col in ['flight_risk_reasons']:
+                df[col] = [[] for _ in range(len(df))]
+            else:
+                df[col] = ''
+    return df[EVENT_COLUMNS]
 
 
 def get_dataset_summary(threshold=None):
