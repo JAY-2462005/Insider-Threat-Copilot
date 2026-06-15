@@ -8,9 +8,9 @@ import pandas as pd
 import plotly.graph_objects as go
 import sys
 import os
-import uuid
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from components.theme import inject_global_css, render_hero
 from data_service import get_events_dataframe
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend')))
@@ -18,34 +18,14 @@ from copilot import ask_copilot, is_ollama_available, DEFAULT_MODEL
 
 OLLAMA_OK = is_ollama_available()
 
-st.set_page_config(page_title="Security Copilot", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="Security Copilot", layout="wide")
+inject_global_css()
 
-# ── CSS ───────────────────────────────────────────────────────────────────
-st.markdown("""
-<style>
-    .copilot-hero {
-        background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
-        padding: 1.3rem 2rem; border-radius: 14px; margin-bottom: 1rem;
-        color: white; text-align: center;
-    }
-    .copilot-hero h1 { color:#f8f8f8; margin:0; font-size:1.6rem; }
-    .copilot-hero p  { color:#a0aec0; margin:0.2rem 0 0 0; font-size:0.88rem; }
-    .bar-bg { background:#e2e8f0; border-radius:8px; height:22px; width:100%; margin:3px 0; }
-    .bar-fill { border-radius:8px; height:22px; display:flex; align-items:center;
-                padding-left:10px; font-size:0.78rem; font-weight:600; color:white; }
-    div[data-testid="stChatMessage"] { max-width:100%!important; }
-    .phase-card { background:#f8f9fa; border-left:4px solid #302b63;
-                  border-radius:8px; padding:0.8rem 1rem; margin:0.5rem 0; }
-</style>
-""", unsafe_allow_html=True)
-
-# ── Header ────────────────────────────────────────────────────────────────
-st.markdown("""
-<div class="copilot-hero">
-    <h1>🛡️ TrustGuardian Security Copilot</h1>
-    <p>Offline RAG SOC Copilot — Pandas retrieval + local Qwen via Ollama</p>
-</div>
-""", unsafe_allow_html=True)
+render_hero(
+    "Security Copilot",
+    "Ask questions in plain English. TrustGuardian retrieves evidence from your scored CSV data, "
+    "then generates an analyst narrative with local Qwen (RAG) — no hallucinated users or scores.",
+)
 
 # ── State ─────────────────────────────────────────────────────────────────
 if "copilot_messages" not in st.session_state:
@@ -62,20 +42,20 @@ top_user = df.sort_values("risk_score", ascending=False).iloc[0]["username"] if 
 
 status_cols = st.columns([3, 1])
 with status_cols[0]:
-    st.markdown("##### ⚡ Quick Actions")
+    st.markdown("**Quick actions**")
 with status_cols[1]:
     if OLLAMA_OK:
-        st.success(f"Qwen ready ({DEFAULT_MODEL})")
+        st.success(f"Qwen online · {DEFAULT_MODEL}")
     else:
-        st.warning("Ollama offline — rule-based fallback")
+        st.warning("Qwen offline · rule-based fallback")
 
 qa = st.columns(5)
 qas = [
-    ("🔍 USB Incidents", "Show me all critical incidents involving USB devices"),
-    ("👤 Profile " + top_user, f"Tell me about {top_user}"),
-    ("❓ Explain Alert", f"Why was {top_user} flagged?"),
-    ("✈️ Flight Risk", "Who should I monitor next week?"),
-    ("📋 SOC Procedures", "What needs to be done if a user is flagged?"),
+    ("USB incidents", "Show me all critical incidents involving USB devices"),
+    (f"Profile {top_user}", f"Tell me about {top_user}"),
+    ("Explain alert", f"Why was {top_user} flagged?"),
+    ("Flight risk", "Who should I monitor next week?"),
+    ("SOC playbook", "What needs to be done if a user is flagged?"),
 ]
 for i, (label, prompt) in enumerate(qas):
     if qa[i].button(label, key=f"qa_{i}", use_container_width=True):
@@ -350,27 +330,28 @@ if pending:
 # RENDER CHAT
 # ═══════════════════════════════════════════════════════════════════════════
 if not st.session_state.copilot_messages:
-    with st.chat_message("assistant", avatar="🛡️"):
+    with st.chat_message("assistant"):
         st.markdown(
-            "**Welcome, Analyst.** I'm TrustGuardian — your offline SOC Copilot.\n\n"
-            "I retrieve evidence from your CSV data, then explain it with **local Qwen RAG**.\n\n"
-            "| Query Type | Example |\n"
-            "|---|---|\n"
-            "| Investigate | *Show contractors with critical alerts* |\n"
-            "| Profile | *Tell me about user.0058* |\n"
-            "| Explain | *Why was user.0009 flagged?* |\n"
-            "| Compare | *Compare user.0058 and user.0092* |\n"
-            "| Predict | *Who should I monitor next week?* |\n"
-            "| Procedures | *What to do if a user is flagged?* |\n\n"
-            "Install Ollama + `ollama pull qwen2.5:1.5b` for full AI narratives."
+            "**TrustGuardian SOC Copilot** — grounded answers from your insider-threat dataset.\n\n"
+            "**How it works:** your question → Pandas retrieves relevant rows → Qwen explains the evidence.\n\n"
+            "| Ask about | Example |\n|---|---|\n"
+            "| Threats | Show contractors with critical alerts |\n"
+            "| Users | Tell me about user.0058 |\n"
+            "| Alerts | Why was user.0009 flagged? |\n"
+            "| Compare | Compare user.0058 and user.0092 |\n"
+            "| Risk | Who should I monitor next week? |\n"
+            "| Playbooks | What to do if a user is flagged? |\n\n"
+            "Responses include an **Analyst Summary**, **Evidence table**, and **Recommended actions**."
         )
+        if not OLLAMA_OK:
+            st.caption("Start Ollama and run `ollama pull qwen2.5:1.5b` for full AI narratives.")
 else:
     for msg_idx, msg in enumerate(st.session_state.copilot_messages):
         if msg["role"] == "user":
-            with st.chat_message("user", avatar="🧑‍💻"):
+            with st.chat_message("user"):
                 st.markdown(msg["content"])
         else:
-            with st.chat_message("assistant", avatar="🛡️"):
+            with st.chat_message("assistant"):
                 result = msg.get("result")
                 if result:
                     render_findings(result, msg_idx)
@@ -389,7 +370,7 @@ if user_input:
 
 # ── Clear ─────────────────────────────────────────────────────────────────
 if st.session_state.copilot_messages:
-    if st.button("🗑️ Clear Conversation", key="clear_chat"):
+    if st.button("Clear conversation", key="clear_chat"):
         st.session_state.copilot_messages = []
         st.rerun()
 

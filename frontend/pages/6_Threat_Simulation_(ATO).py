@@ -46,14 +46,27 @@ def _apply_scenario(profile_row, scenario, role_row):
     return mutated
 
 
-st.title("🎯 Account Takeover — Role-Peer Simulation Lab")
+st.title("Account Takeover Simulation Lab")
 st.markdown(
-    """
-    This lab models **Account Takeover (ATO)** by comparing each user against one of
-    **13 job-role peer groups**, then replaying real injected attack patterns from your
-    access logs. Pick a scenario, choose a victim, and watch behavioral drift unfold.
-    """
+    "Model **Account Takeover (ATO)** by comparing users against **13 job-role peer groups**, "
+    "then replaying real attack patterns from your access logs."
 )
+
+with st.expander("How baseline vs advanced phases work", expanded=False):
+    st.markdown(
+        """
+        **Baseline (Phase 0)** — The victim's normal behavior is anchored to their job-role peer group.
+        Query volume, row counts, and access hours match expected patterns. Drift score is low.
+
+        **Advanced phases (1 → 3)** — Each phase gradually mutates the profile toward the selected attack scenario:
+        - **Phase 1 — Credential Abuse:** Slight query-frequency drift from peer median
+        - **Phase 2 — Data Staging:** Row-count and access-hour patterns shift further
+        - **Phase 3 — Exfiltration Alert:** Full scenario applied; drift exceeds the 75% SOC threshold
+
+        Use **Run Simulation** to enter Phase 1, then **Advance Phase** to walk through staging to exfiltration.
+        **Reset Baseline** returns the victim to normal peer-group behavior.
+        """
+    )
 
 try:
     ctx = get_ato_simulation()
@@ -186,6 +199,12 @@ with btn_advance:
 PHASES = ["Baseline", "Credential Abuse", "Data Staging", "Exfiltration Alert"]
 phase_idx = st.session_state.ato_phase if st.session_state.ato_running else 0
 st.progress(phase_idx / 3, text=f"Phase {phase_idx}/3 — {PHASES[phase_idx]}")
+if phase_idx == 0:
+    st.caption("Baseline: victim behavior matches role-peer norms. No drift applied.")
+elif phase_idx < 3:
+    st.caption(f"Advanced phase {phase_idx}: progressive drift toward {scenario['label']}.")
+else:
+    st.caption("Exfiltration phase: full attack profile applied — drift threshold may be breached.")
 
 st.markdown("---")
 

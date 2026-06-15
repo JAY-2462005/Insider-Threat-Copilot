@@ -1,21 +1,22 @@
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 import os
 import sys
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from components.copilot import render_copilot_button
-from data_service import get_events_dataframe, clear_data_cache, get_flight_risk_data
+from components.theme import inject_global_css, render_hero
+from data_service import get_events_dataframe, get_flight_risk_data
 
-st.set_page_config(page_title="Flight Risk Radar", page_icon="✈️", layout="wide")
-
-st.title("✈️ Proactive Flight Risk Radar")
-st.markdown("### Predict insider threats BEFORE they happen")
-
-# Clear cache to ensure we get the latest data with flight risk columns
-clear_data_cache()
+inject_global_css()
+st.set_page_config(page_title="Flight Risk Radar", layout="wide")
+render_hero(
+    "Flight Risk Radar",
+    "Predict insider threats before exfiltration using pre-breach behavioral drift — not breach indicators.",
+)
 
 try:
     flight_risk_summary = get_flight_risk_data()
@@ -35,7 +36,7 @@ if df.empty:
 col_gauge, col_dist = st.columns(2)
 
 with col_gauge:
-    st.subheader("Enterprise Insider Pressure Index")
+    st.subheader("📈 Enterprise Insider Pressure Index")
     avg_pre_breach = flight_risk_summary.get('enterprise_pressure_index', 0)
     
     # Dynamic coloring based on pressure level
@@ -66,7 +67,7 @@ with col_gauge:
     st.plotly_chart(fig_gauge, use_container_width=True)
 
 with col_dist:
-    st.subheader("Flight Risk Level Distribution")
+    st.subheader("🎯 Flight Risk Level Distribution")
     
     risk_distribution = flight_risk_summary.get('risk_distribution', {})
     
@@ -96,7 +97,7 @@ with col_dist:
 st.markdown("---")
 
 # --- ROW 2: TOP 10 USERS LIKELY TO BREACH ---
-st.subheader("🎯 Top 10 Users Likely To Breach")
+st.subheader("🚨 Top 10 Watchlist")
 
 top_risk_users = flight_risk_summary.get('top_risk_users', [])
 
@@ -125,7 +126,7 @@ else:
 st.markdown("---")
 
 # --- ROW 3: FLIGHT RISK DRIVERS ---
-st.subheader("🔍 Flight Risk Drivers Analysis")
+st.subheader("🔍 Flight Risk Drivers")
 
 col_drivers, col_trend = st.columns(2)
 
@@ -182,7 +183,7 @@ with col_trend:
 st.markdown("---")
 
 # --- ROW 4: DETAILED USER INVESTIGATION ---
-st.subheader("🔬 Detailed Flight Risk Investigation")
+st.subheader("User Investigation")
 
 if top_risk_users:
     user_risk_df = pd.DataFrame(top_risk_users)
@@ -229,7 +230,7 @@ if top_risk_users:
         st.dataframe(activity_display, use_container_width=True, hide_index=True)
         
         st.markdown("---")
-        if st.button(f"🤖 Ask Copilot: Why is {selected_user} high flight risk?", key=f"flight_detective_{selected_user}"):
+        if st.button(f"Ask Copilot about {selected_user}", key=f"flight_detective_{selected_user}"):
             st.session_state["detective_prompt"] = f"Why was {selected_user} flagged with pre-breach score {latest_event.get('pre_breach_score', 0)}?"
             st.switch_page("pages/8_Security_Copilot.py")
 else:
@@ -238,26 +239,20 @@ else:
 st.markdown("---")
 
 # --- FOOTER ---
-st.info("""
-💡 **How Flight Risk Prediction Works:**
+with st.expander("How pre-breach scoring works"):
+    st.markdown(
+        """
+        Flight Risk analyzes **pre-breach drift only** — early warning signals before data exfiltration:
 
-This radar analyzes PRE-BREACH behavior drift patterns to predict insider threats BEFORE they occur:
+        - Login time drift from typical access hours
+        - High baseline query frequency
+        - Exploration of unapproved assets (without risky destinations)
+        - HR flight-risk flag and short tenure
 
-- **Login Time Drift:** Detects shifts from typical access hours (early warning sign)
-- **Access Frequency Drift:** Identifies unusual query frequency patterns
-- **Asset Exploration Drift:** Flags exploration of unapproved data assets (without exfiltration)
-- **HR Risk Factors:** Incorporates tenure and HR flight-risk flags
-- **Note:** Actual breach indicators (volume spikes, risky destinations) are excluded to focus on early warning
+        **Levels:** LOW (0–30) · WATCHLIST (31–60) · ELEVATED (61–80) · HIGH FLIGHT RISK (81–100)
+        """
+    )
 
-**Risk Levels:**
-- **0-30 (LOW):** Normal behavior patterns
-- **31-60 (WATCHLIST):** Minor behavioral shifts detected
-- **61-80 (ELEVATED):** Significant drift patterns - monitor closely
-- **81-100 (HIGH FLIGHT RISK):** Critical pre-breach indicators - immediate intervention recommended
-""")
-
-# Render context-aware Copilot button
-st.markdown("---")
 render_copilot_button(
     "Ask Copilot: Who should I monitor next week?",
     "Who should I monitor next week?",

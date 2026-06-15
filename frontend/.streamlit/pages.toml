@@ -1,0 +1,44 @@
+[[pages]]
+path = "app.py"
+name = "Home"
+icon = ":material/home:"
+
+[[pages]]
+path = "pages/1_Dashboard.py"
+name = "Executive Dashboard"
+icon = ":material/dashboard:"
+
+[[pages]]
+path = "pages/2_Alerts.py"
+name = "Alerts Queue"
+icon = ":material/notifications_active:"
+
+[[pages]]
+path = "pages/3_Investigation.py"
+name = "Investigation"
+icon = ":material/search:"
+
+[[pages]]
+path = "pages/4_Analytics.py"
+name = "Analytics"
+icon = ":material/analytics:"
+
+[[pages]]
+path = "pages/5_AI_Summary.py"
+name = "AI Summary"
+icon = ":material/summarize:"
+
+[[pages]]
+path = "pages/6_Threat_Simulation_(ATO).py"
+name = "Threat Simulation"
+icon = ":material/science:"
+
+[[pages]]
+path = "pages/7_Flight_Risk.py"
+name = "Flight Risk"
+icon = ":material/radar:"
+
+[[pages]]
+path = "pages/8_Security_Copilot.py"
+name = "Security Copilot"
+icon = ":material/smart_toy:"

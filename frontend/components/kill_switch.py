@@ -23,7 +23,7 @@ def is_critical_alert(alert) -> bool:
 
 def render_neutralized_block(username: str):
     st.success(
-        f"🔒 **THREAT NEUTRALIZED:** Access for `{username}` has been revoked via Identity Provider."
+        f"**Threat neutralized** — access for `{username}` has been revoked via Identity Provider."
     )
 
 
@@ -31,7 +31,7 @@ def render_revoke_button(alert, key_prefix: str = ""):
     access_id = alert.get("access_id") if isinstance(alert, dict) else alert["access_id"]
     username = alert.get("username") if isinstance(alert, dict) else alert["username"]
 
-    if st.button("🚨 REVOKE ACCESS & ISOLATE", key=f"isolate_{key_prefix}{access_id}", type="primary"):
+    if st.button("Revoke Access & Isolate", key=f"isolate_{key_prefix}{access_id}", type="primary"):
         init_isolated_users()
         with st.spinner("Initiating Azure AD/Okta Webhook..."):
             time.sleep(1.5)
@@ -40,10 +40,28 @@ def render_revoke_button(alert, key_prefix: str = ""):
         st.rerun()
 
 
+def filter_active_alerts(alerts_df):
+    """Return alerts excluding users already revoked via kill-switch."""
+    if alerts_df.empty:
+        return alerts_df
+    init_isolated_users()
+    return alerts_df[~alerts_df["username"].isin(st.session_state.isolated_users)].copy()
+
+
+def count_active_alerts(alerts_df) -> int:
+    return len(filter_active_alerts(alerts_df))
+
+
 def count_active_critical(alerts_df):
     """Critical alerts excluding users already isolated (display-only helper)."""
-    if alerts_df.empty:
+    active = filter_active_alerts(alerts_df)
+    if active.empty:
         return 0
-    init_isolated_users()
-    active = alerts_df[~alerts_df["username"].isin(st.session_state.isolated_users)]
     return int((active["severity"] == "CRITICAL").sum())
+
+
+def count_active_high(alerts_df) -> int:
+    active = filter_active_alerts(alerts_df)
+    if active.empty:
+        return 0
+    return int((active["severity"] == "HIGH").sum())
